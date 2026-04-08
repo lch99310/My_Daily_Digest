@@ -77,13 +77,27 @@ jobs:
           node scripts/generate-digest.mjs
 
       # ------------------------------------------------------------------
-      # 6. Deliver via Telegram
+      # 6. Check which delivery secrets are configured
+      #    (secrets context is not available in step `if:` conditions,
+      #     so we probe via env vars and write step outputs instead)
+      # ------------------------------------------------------------------
+      - name: Check delivery secrets
+        id: check-secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          [[ -n "$TELEGRAM_BOT_TOKEN" ]] && echo "has_telegram=true" >> $GITHUB_OUTPUT || echo "has_telegram=false" >> $GITHUB_OUTPUT
+          [[ -n "$RESEND_API_KEY" ]]      && echo "has_email=true"    >> $GITHUB_OUTPUT || echo "has_email=false"    >> $GITHUB_OUTPUT
+
+      # ------------------------------------------------------------------
+      # 7. Deliver via Telegram
       # ------------------------------------------------------------------
       - name: Deliver via Telegram
         if: |
+          steps.check-secrets.outputs.has_telegram == 'true' &&
           inputs.delivery_override != 'email' &&
-          inputs.delivery_override != 'stdout' &&
-          secrets.TELEGRAM_BOT_TOKEN != ''
+          inputs.delivery_override != 'stdout'
         run: |
           node scripts/deliver-telegram.js /tmp/follow-builders-digest.md
         env:
@@ -92,13 +106,13 @@ jobs:
         continue-on-error: true
 
       # ------------------------------------------------------------------
-      # 7. Deliver via Email
+      # 8. Deliver via Email
       # ------------------------------------------------------------------
       - name: Deliver via Email
         if: |
+          steps.check-secrets.outputs.has_email == 'true' &&
           inputs.delivery_override != 'telegram' &&
-          inputs.delivery_override != 'stdout' &&
-          secrets.RESEND_API_KEY != ''
+          inputs.delivery_override != 'stdout'
         run: |
           node scripts/deliver-email.js /tmp/follow-builders-digest.md
         env:
@@ -107,7 +121,7 @@ jobs:
         continue-on-error: true
 
       # ------------------------------------------------------------------
-      # 8. Upload digest as artifact (for review)
+      # 9. Upload digest as artifact (for review)
       # ------------------------------------------------------------------
       - name: Upload digest artifact
         uses: actions/upload-artifact@v4
@@ -117,7 +131,7 @@ jobs:
           retention-days: 7
 
       # ------------------------------------------------------------------
-      # 9. Commit feed snapshot
+      # 10. Commit feed snapshot
       # ------------------------------------------------------------------
       - name: Commit feed snapshot
         run: |
