@@ -37,32 +37,22 @@ jobs:
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------------
-      # 2. Setup Node.js
+      # 2. Setup Node.js (no npm install needed — scripts use only built-ins)
       # ------------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: scripts/package-lock.json
 
       # ------------------------------------------------------------------
-      # 3. Install dependencies
-      # ------------------------------------------------------------------
-      - name: Install dependencies
-        run: npm install
-        working-directory: scripts
-
-      # ------------------------------------------------------------------
-      # 4. Run prepare-digest → save output
+      # 3. Run prepare-digest → save output
       # ------------------------------------------------------------------
       - name: Prepare digest data
         run: |
-          node scripts/prepare-digest.js > prepare-output.json
-        working-directory: scripts
+          node scripts/prepare-digest.js > scripts/prepare-output.json
 
       # ------------------------------------------------------------------
-      # 5. Generate digest with OpenRouter LLM
+      # 4. Generate digest with OpenRouter LLM
       # ------------------------------------------------------------------
       - name: Generate digest with OpenRouter
         env:
