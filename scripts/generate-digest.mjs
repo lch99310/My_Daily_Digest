@@ -8,7 +8,12 @@ import { readFile, writeFile } from 'fs/promises';
 
 // -- Config -------------------------------------------------------------------
 
-const WORKSPACE = process.env.GITHUB_WORKSPACE || '/home/runner/work/ai-daily-digest-from-twitter-x/ai-daily-digest-from-twitter-x';
+// GITHUB_WORKSPACE is set by the workflow step (github.workspace)
+// Falls back to local path derived from script location
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WORKSPACE = process.env.GITHUB_WORKSPACE || resolve(__dirname, '..');
 const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
