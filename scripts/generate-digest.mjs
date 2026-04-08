@@ -61,68 +61,69 @@ function buildPrompt(data) {
 
   return `You are writing the AI Builders Daily Digest for ${today}.
 
-## Feed Stats
-- ${stats.podcastEpisodes || 0} podcast episodes
-- ${stats.xBuilders || 0} X builders tracked
-- ${stats.totalTweets || 0} tweets total
-- ${stats.blogPosts || 0} blog posts
+## Source Data
 
-## Podcast Highlights
+### Podcasts
 ${podcastsSection}
 
-## Top X Builder Updates
+### X / Twitter Builders
 ${buildersSection}
 
-## Notable Blog Posts
+### Blog Posts
 ${blogsSection}
 
-## Your Task
-Write a bilingual digest (Simplified Chinese + English) following the style guidance from the prompts.
+## Instructions
+- Pick the 3–5 most interesting items total across all sources
+- Write each item ONCE — no bilingual repetition, no parallel paragraphs
+- Language: Simplified Chinese (use English only for proper nouns/model names)
+- Tone: concise, insightful — like a smart friend's WeChat message
 
-## Style Rules
-- Format: **Simplified Chinese first**, then English (or interleave naturally)
-- Tone: warm, insightful, concise — like a smart friend sharing the week's best finds
-- Use emojis sparingly as visual anchors: 🎙️ 🐦 📦 ✨ 📧 🔥
-- Pick the 3-5 most interesting/relevant items to highlight
-- Do NOT list everything — curate and comment
-- Use **bold** for names and highlights
+## Output Format (strict — nothing before or after)
 
-## Output Format (strict)
-Write your digest in this format, nothing else before or after:
+🤖 AI Builders Digest · ${today}
 
-# 🤖 AI Builders Digest — ${today}
+[For each item use exactly this card layout:]
 
-## 🎙️ 播客焦點 / Podcast Spotlight
-[Your curated highlights here]
+{section-emoji} **{Title or @handle}**
+{1–2 sentences, max 80 Chinese characters, no repetition}
+🔗 {url if available}
 
-## 🐦 X / Twitter Highlights
-[Your curated highlights here]
-
-## 📦 其他值得注意 / Other Notable Mentions
-[Your curated highlights here]
+[blank line between cards]
 
 ---
-*AI Builders Digest · Generated automatically*
+_由 AI 自动生成 · AI Builders Digest_
+
+Section emojis: 🎙️ for podcasts · 🐦 for X/Twitter · 📝 for blogs
 `;
 }
 
 // -- Call OpenRouter ---------------------------------------------------------
 
 async function callOpenRouter(model, prompt) {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-      'HTTP-Referer': 'https://github.com/lch99310/ai-daily-digest-from-twitter-x',
-      'X-Title': 'AI Builders Digest',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
+  // 90-second hard timeout per model attempt — prevents free-tier models from hanging
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+
+  let response;
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      signal: controller.signal,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'https://github.com/lch99310/ai-daily-digest-from-twitter-x',
+        'X-Title': 'AI Builders Digest',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: MAX_TOKENS,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const err = await response.text();
