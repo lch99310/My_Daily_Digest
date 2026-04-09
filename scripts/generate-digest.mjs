@@ -18,11 +18,12 @@ const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
-// Model priority: try Gemma first, then fallbacks
+// Model priority list — avoid models known to hang on free tier
 const MODELS = [
   'google/gemma-4-26b-a4b-it:free',
   'qwen/qwen3-next-80b-a3b-instruct:free',
-  'minimax/minimax-m2.5:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'deepseek/deepseek-chat-v3-0324:free',
   'nvidia/nemotron-3-nano-30b-a3b:free',
   'z-ai/glm-4.5-air:free',
 ];
@@ -108,14 +109,17 @@ Section emojis: 🎙️ for podcasts · 🐦 for X/Twitter · 📝 for blogs
 // -- Call OpenRouter ---------------------------------------------------------
 
 async function callOpenRouter(model, prompt) {
-  // 90-second hard timeout per model attempt — prevents free-tier models from hanging
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90_000);
+  // AbortSignal.timeout() covers the FULL request lifecycle (headers + body).
+  // The previous AbortController approach had a bug: clearTimeout() fired in
+  // the finally block as soon as fetch() returned response headers, leaving
+  // response.json() (body streaming) completely unguarded — slow models like
+  // minimax could hang the body read for the entire 30-min workflow timeout.
+  const signal = AbortSignal.timeout(90_000);
 
   let response;
   try {
     response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal: controller.signal,
+      signal,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -129,17 +133,20 @@ async function callOpenRouter(model, prompt) {
         messages: [{ role: 'user', content: prompt }]
       })
     });
-  } finally {
-    clearTimeout(timer);
-  }
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`${response.status}: ${err}`);
-  }
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`${response.status}: ${err}`);
+    }
 
-  const result = await response.json();
-  return result.choices?.[0]?.message?.content || '';
+    const result = await response.json();
+    return result.choices?.[0]?.message?.content || '';
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Timed out after 90s`);
+    }
+    throw err;
+  }
 }
 
 // -- Main --------------------------------------------------------------------
