@@ -18,14 +18,16 @@ const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
-// Model priority list — avoid models known to hang on free tier
+// Model priority — diversify providers to avoid one provider's rate limit
+// killing the entire fallback chain
 const MODELS = [
-  'google/gemma-4-26b-a4b-it:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'deepseek/deepseek-chat-v3-0324:free',
-  'nvidia/nemotron-3-nano-30b-a3b:free',
-  'z-ai/glm-4.5-air:free',
+  'google/gemma-4-26b-a4b-it:free',          // Google AI Studio
+  'meta-llama/llama-3.3-70b-instruct:free',   // Venice
+  'qwen/qwen3-next-80b-a3b-instruct:free',    // Venice
+  'deepseek/deepseek-r1:free',                // DeepSeek (different infra)
+  'mistralai/mistral-7b-instruct:free',       // Mistral
+  'nvidia/nemotron-3-nano-30b-a3b:free',      // Nvidia
+  'z-ai/glm-4.5-air:free',                   // Z-AI
 ];
 
 const MAX_TOKENS = 4096;
@@ -185,7 +187,13 @@ async function callOpenRouter(model, prompt) {
     }
 
     const result = await response.json();
-    return result.choices?.[0]?.message?.content || '';
+    const content = (result.choices?.[0]?.message?.content || '').trim();
+    if (!content) {
+      // Empty body is a silent failure — treat it as an error so the
+      // loop advances to the next model rather than breaking with digest=''
+      throw new Error('Empty response body from model');
+    }
+    return content;
   } catch (err) {
     if (err.name === 'TimeoutError' || err.name === 'AbortError') {
       throw new Error(`Timed out after 90s`);
