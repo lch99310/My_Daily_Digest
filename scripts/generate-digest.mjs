@@ -5,32 +5,25 @@
 // ============================================================================
 
 import { readFile, writeFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 
 // -- Config -------------------------------------------------------------------
 
-// GITHUB_WORKSPACE is set by the workflow step (github.workspace)
-// Falls back to local path derived from script location
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = process.env.GITHUB_WORKSPACE || resolve(__dirname, '..');
 const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
-// Model priority — spread across different upstream providers so one
-// provider's outage doesn't kill the whole chain.
-// IDs confirmed to exist via 429 (provider exists) or success in CI logs.
-const MODELS = [
-  'google/gemma-4-26b-a4b-it:free',          // Google AI Studio
-  'meta-llama/llama-3.3-70b-instruct:free',   // Venice
-  'qwen/qwen3-next-80b-a3b-instruct:free',    // Venice
-  'z-ai/glm-4.5-air:free',                   // Z.AI
-  'nvidia/nemotron-3-nano-30b-a3b:free',      // Nvidia
-  'google/gemma-2-9b-it:free',               // Google AI Studio (smaller quota pool)
-  'meta-llama/llama-3.1-8b-instruct:free',   // Meta / various
-  'qwen/qwen-2.5-7b-instruct:free',          // Alibaba (smaller)
-  'microsoft/phi-3.5-mini-128k-instruct:free', // Microsoft
+// Known-working free models (confirmed via 429 = endpoint exists).
+// Used as fallback if the live model-list API fails.
+// Models that return empty bodies (nvidia nemotron) are excluded.
+const FALLBACK_MODELS = [
+  'google/gemma-4-26b-a4b-it:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'z-ai/glm-4.5-air:free',
 ];
 
 const MAX_TOKENS = 4096;
@@ -48,20 +41,14 @@ function improvePodcastUrl(url, title) {
   if (!url) {
     return query ? `https://www.youtube.com/results?search_query=${query}` : '';
   }
-  // Already an episode URL — keep as-is
   if (url.includes('/watch?v=') || url.includes('/shorts/') || url.includes('youtu.be/')) {
-    return url;
+    return url; // Already an episode URL
   }
-  // Channel URL: .../@handle — use channel-scoped search
   const channelMatch = url.match(/youtube\.com\/(@[\w.-]+)/);
   if (channelMatch && query) {
     return `https://www.youtube.com/${channelMatch[1]}/search?query=${query}`;
   }
-  // Playlist or anything else with a title → global YouTube search
-  if (query) {
-    return `https://www.youtube.com/results?search_query=${query}`;
-  }
-  return url;
+  return query ? `https://www.youtube.com/results?search_query=${query}` : url;
 }
 
 // -- Build prompt from feed data --------------------------------------------
@@ -74,7 +61,6 @@ function buildPrompt(data) {
   const podcasts = data.podcasts || [];
   const builders = data.x || [];
   const blogs = data.blogs || [];
-  const stats = data.stats || {};
 
   const podcastsSection = podcasts.slice(0, 5).map((p, i) => {
     const episodeTitle = p.title || p.name || 'Unknown Episode';
@@ -89,9 +75,8 @@ function buildPrompt(data) {
 
   const buildersSection = builders.slice(0, 8).map((b, i) => {
     const topTweet = (b.tweets || [])[0] || {};
-    // Strip t.co shortened links — they're opaque without expansion and confuse the LLM
     const text = (topTweet.text || b.bio || '')
-      .replace(/https:\/\/t\.co\/\S+/g, '')
+      .replace(/https:\/\/t\.co\/\S+/g, '') // strip opaque t.co links
       .replace(/\n/g, ' ')
       .trim()
       .slice(0, 500);
@@ -156,19 +141,48 @@ Section emojis: 🎙️ for podcasts · 🐦 for X/Twitter · 📝 for blogs
 `;
 }
 
-// -- Call OpenRouter ---------------------------------------------------------
+// -- Fetch current free models from OpenRouter API --------------------------
 
-async function callOpenRouter(model, prompt) {
-  // AbortSignal.timeout() covers the FULL request lifecycle (headers + body).
-  // The previous AbortController approach had a bug: clearTimeout() fired in
-  // the finally block as soon as fetch() returned response headers, leaving
-  // response.json() (body streaming) completely unguarded — slow models like
-  // minimax could hang the body read for the entire 30-min workflow timeout.
-  const signal = AbortSignal.timeout(90_000);
-
-  let response;
+/**
+ * Returns a fresh list of all :free model IDs from OpenRouter.
+ * Falls back to FALLBACK_MODELS if the API call fails.
+ * Caps at 20 models to avoid firing too many parallel requests.
+ */
+async function fetchFreeModels() {
   try {
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`models API ${res.status}`);
+    const data = await res.json();
+    const free = (data.data || [])
+      .filter(m => m.id.endsWith(':free'))
+      .map(m => m.id);
+    console.log(`Discovered ${free.length} free models on OpenRouter`);
+    // Cap to avoid firing hundreds of parallel requests
+    return free.slice(0, 20);
+  } catch (err) {
+    console.warn(`Could not fetch model list (${err.message}), using fallback list`);
+    return FALLBACK_MODELS;
+  }
+}
+
+// -- Call one model -----------------------------------------------------------
+
+/**
+ * @param {string} model
+ * @param {string} prompt
+ * @param {AbortSignal} [raceSignal]  — set by raceModels() to cancel losers
+ */
+async function callOpenRouter(model, prompt, raceSignal) {
+  // Combine per-model 90s timeout with the race-winner abort signal
+  const signals = [AbortSignal.timeout(90_000)];
+  if (raceSignal) signals.push(raceSignal);
+  const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       signal,
       method: 'POST',
       headers: {
@@ -180,8 +194,8 @@ async function callOpenRouter(model, prompt) {
       body: JSON.stringify({
         model,
         max_tokens: MAX_TOKENS,
-        messages: [{ role: 'user', content: prompt }]
-      })
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
 
     if (!response.ok) {
@@ -191,17 +205,46 @@ async function callOpenRouter(model, prompt) {
 
     const result = await response.json();
     const content = (result.choices?.[0]?.message?.content || '').trim();
-    if (!content) {
-      // Empty body is a silent failure — treat it as an error so the
-      // loop advances to the next model rather than breaking with digest=''
-      throw new Error('Empty response body from model');
-    }
+    if (!content) throw new Error('Empty response body from model');
     return content;
   } catch (err) {
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-      throw new Error(`Timed out after 90s`);
-    }
+    if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');
+    if (err.name === 'AbortError') throw new Error('Cancelled (another model won)');
     throw err;
+  }
+}
+
+// -- Race all models in parallel ---------------------------------------------
+
+/**
+ * Fires requests to all models simultaneously.
+ * The first model to return a non-empty response wins.
+ * All other in-flight requests are aborted immediately.
+ */
+async function raceModels(models, prompt) {
+  const controller = new AbortController();
+
+  const attempts = models.map(async (model) => {
+    try {
+      const result = await callOpenRouter(model, prompt, controller.signal);
+      // This model won — cancel everyone else
+      controller.abort();
+      console.log(`✓ Winner: ${model}`);
+      return result;
+    } catch (err) {
+      // Don't log cancellation noise from aborted losers
+      if (!err.message.includes('Cancelled') && !controller.signal.aborted) {
+        console.warn(`✗ ${model}: ${err.message.slice(0, 100)}`);
+      }
+      throw err;
+    }
+  });
+
+  try {
+    return await Promise.any(attempts);
+  } catch {
+    // AggregateError — every model failed
+    throw new Error('All OpenRouter models failed');
   }
 }
 
@@ -211,52 +254,19 @@ async function main() {
   console.log('Reading feed data...');
   const jsonContent = await readFile(PREPARE_JSON, 'utf-8');
   const data = JSON.parse(jsonContent);
-
   console.log(`Feed loaded: ${data.stats?.podcastEpisodes || 0} podcasts, ${data.stats?.xBuilders || 0} builders`);
 
+  const models = await fetchFreeModels();
+  console.log(`Racing ${models.length} models in parallel…`);
+
   const prompt = buildPrompt(data);
-  let digest = '';
-  let usedModel = '';
+  let digest = await raceModels(models, prompt);
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-  for (const model of MODELS) {
-    console.log(`Trying model: ${model}...`);
-    let lastErr;
-    // Retry up to 3 times on 429 ("temporarily rate-limited") with back-off.
-    // Other errors (404, empty body, timeout) are not retried.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        digest = await callOpenRouter(model, prompt);
-        usedModel = model;
-        console.log(`Success with ${model}`);
-        break;
-      } catch (err) {
-        lastErr = err;
-        const is429 = err.message.startsWith('429:');
-        if (is429 && attempt < 2) {
-          const wait = (attempt + 1) * 8_000; // 8s, 16s
-          console.warn(`  rate-limited (attempt ${attempt + 1}), retrying in ${wait / 1000}s…`);
-          await sleep(wait);
-          continue;
-        }
-        // Not 429, or out of retries — give up on this model
-        console.warn(`  failed: ${err.message}`);
-        break;
-      }
-    }
-    if (digest) break;
-  }
-
-  if (!digest) {
-    throw new Error('All OpenRouter models failed');
-  }
-
-  // Strip any markdown code fences if the model wrapped output
+  // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
 
   await writeFile(OUTPUT_FILE, digest, 'utf-8');
-  console.log(`Digest written to ${OUTPUT_FILE} (${digest.length} chars, model: ${usedModel})`);
+  console.log(`Digest written to ${OUTPUT_FILE} (${digest.length} chars)`);
 }
 
 main().catch(err => {
