@@ -18,16 +18,19 @@ const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
-// Model priority — diversify providers to avoid one provider's rate limit
-// killing the entire fallback chain
+// Model priority — spread across different upstream providers so one
+// provider's outage doesn't kill the whole chain.
+// IDs confirmed to exist via 429 (provider exists) or success in CI logs.
 const MODELS = [
   'google/gemma-4-26b-a4b-it:free',          // Google AI Studio
   'meta-llama/llama-3.3-70b-instruct:free',   // Venice
   'qwen/qwen3-next-80b-a3b-instruct:free',    // Venice
-  'deepseek/deepseek-r1:free',                // DeepSeek (different infra)
-  'mistralai/mistral-7b-instruct:free',       // Mistral
+  'z-ai/glm-4.5-air:free',                   // Z.AI
   'nvidia/nemotron-3-nano-30b-a3b:free',      // Nvidia
-  'z-ai/glm-4.5-air:free',                   // Z-AI
+  'google/gemma-2-9b-it:free',               // Google AI Studio (smaller quota pool)
+  'meta-llama/llama-3.1-8b-instruct:free',   // Meta / various
+  'qwen/qwen-2.5-7b-instruct:free',          // Alibaba (smaller)
+  'microsoft/phi-3.5-mini-128k-instruct:free', // Microsoft
 ];
 
 const MAX_TOKENS = 4096;
@@ -215,16 +218,34 @@ async function main() {
   let digest = '';
   let usedModel = '';
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
   for (const model of MODELS) {
     console.log(`Trying model: ${model}...`);
-    try {
-      digest = await callOpenRouter(model, prompt);
-      usedModel = model;
-      console.log(`Success with ${model}`);
-      break;
-    } catch (err) {
-      console.warn(`  failed: ${err.message}`);
+    let lastErr;
+    // Retry up to 3 times on 429 ("temporarily rate-limited") with back-off.
+    // Other errors (404, empty body, timeout) are not retried.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        digest = await callOpenRouter(model, prompt);
+        usedModel = model;
+        console.log(`Success with ${model}`);
+        break;
+      } catch (err) {
+        lastErr = err;
+        const is429 = err.message.startsWith('429:');
+        if (is429 && attempt < 2) {
+          const wait = (attempt + 1) * 8_000; // 8s, 16s
+          console.warn(`  rate-limited (attempt ${attempt + 1}), retrying in ${wait / 1000}s…`);
+          await sleep(wait);
+          continue;
+        }
+        // Not 429, or out of retries — give up on this model
+        console.warn(`  failed: ${err.message}`);
+        break;
+      }
     }
+    if (digest) break;
   }
 
   if (!digest) {
