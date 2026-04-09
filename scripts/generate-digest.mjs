@@ -106,39 +106,36 @@ ${buildersSection || '(no tweets today)'}
 ${blogsSection || '(no blog posts today)'}
 
 ## Instructions
-- Pick the 3–5 most interesting items total across all sources
-- Write each item ONCE — no bilingual repetition, no parallel paragraphs
-- Language: Simplified Chinese (English is OK for proper nouns, model names, technical terms)
-- Tone: insightful and substantive — give the reader enough context to understand WHY this matters, not just WHAT happened
-- Each card body: 150–300 Chinese characters (2–4 sentences). Go deeper than a one-line summary.
-- URLs: copy the exact URL from the source data above — do NOT invent, shorten, or modify any URL. Use the URL field verbatim.
+- Pick 3–5 items total. Each item becomes exactly ONE card.
+- Every card MUST have all three parts: 標題, 摘要, 連結. No exceptions.
+- Language: Simplified Chinese. English only for proper nouns / model names.
+- Tone: insightful — tell the reader WHY it matters, not just what happened.
+- 摘要 length: 100–200 Chinese characters (2–3 sentences). Be substantive.
+- 連結: copy verbatim from the URL field in the source data. Do NOT invent or change any URL.
+- Write each item ONCE. No bilingual repetition.
 
-## Output Format (strict — output exactly this, nothing before or after)
+## Output Format
+
+Output ONLY the cards below — nothing before the header, nothing after the footer.
 
 🤖 **AI Builders Digest**
 📅 ${today}
 
-━━━━━━━━━━━━━━━━━━━━
-
-[For each item, output exactly this card block:]
-
-{section-emoji} **{headline in Simplified Chinese — bold, punchy, 15–25 chars}**
-_{one-line subtitle: who + what, e.g. "Ryan Lopopolo · OpenAI Codex"}_
-
-{2–4 sentence body paragraph in Simplified Chinese, 150–300 chars.
-Explain the core insight, why it matters, and what's actually new.
-Do NOT merely translate the source — synthesize and add context.}
-
-🔗 {exact URL from source data, copied verbatim}
+[repeat this block for each card — exactly 3 parts per card:]
 
 ━━━━━━━━━━━━━━━━━━━━
+{emoji} **標題：{punchy headline in Chinese, 10–20 chars}**
+📝 摘要：{100–200 char body. Synthesize the insight — why does this matter? What is actually new?}
+🔗 連結：{exact URL copied verbatim from source data}
 
-[repeat for each item, always ending each card with the ━ separator line]
+[end of all cards]
 
+━━━━━━━━━━━━━━━━━━━━
 _由 AI 自动生成 · AI Builders Digest_
 
-Section emojis: 🎙️ for podcasts · 🐦 for X/Twitter · 📝 for blogs
+Emoji guide: 🎙️ podcast  🐦 X/Twitter  📝 blog
 `;
+
 }
 
 // -- Fetch current free models from OpenRouter API --------------------------

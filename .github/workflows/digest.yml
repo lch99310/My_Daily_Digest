@@ -119,15 +119,3 @@ jobs:
           name: digest-${{ github.run_number }}
           path: /tmp/follow-builders-digest.md
           retention-days: 7
-
-      # ------------------------------------------------------------------
-      # 10. Commit feed snapshot
-      # ------------------------------------------------------------------
-      - name: Commit feed snapshot
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          cp scripts/prepare-output.json feed-snapshot.json
-          git add feed-snapshot.json
-          git diff --cached --quiet || git commit -m "chore: feed snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ) [skip ci]"
-          git push
