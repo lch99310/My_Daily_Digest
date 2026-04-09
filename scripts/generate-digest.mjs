@@ -30,6 +30,35 @@ const MODELS = [
 
 const MAX_TOKENS = 4096;
 
+// -- URL helpers -------------------------------------------------------------
+
+/**
+ * Improve podcast URL: the feed only gives channel/playlist URLs, never the
+ * specific episode. If the URL is a channel (@handle) or playlist, rewrite it
+ * to a YouTube channel-search URL built from the episode title, so clicking
+ * lands the user on the actual episode instead of the channel homepage.
+ */
+function improvePodcastUrl(url, title) {
+  const query = encodeURIComponent((title || '').trim());
+  if (!url) {
+    return query ? `https://www.youtube.com/results?search_query=${query}` : '';
+  }
+  // Already an episode URL — keep as-is
+  if (url.includes('/watch?v=') || url.includes('/shorts/') || url.includes('youtu.be/')) {
+    return url;
+  }
+  // Channel URL: .../@handle — use channel-scoped search
+  const channelMatch = url.match(/youtube\.com\/(@[\w.-]+)/);
+  if (channelMatch && query) {
+    return `https://www.youtube.com/${channelMatch[1]}/search?query=${query}`;
+  }
+  // Playlist or anything else with a title → global YouTube search
+  if (query) {
+    return `https://www.youtube.com/results?search_query=${query}`;
+  }
+  return url;
+}
+
 // -- Build prompt from feed data --------------------------------------------
 
 function buildPrompt(data) {
@@ -42,28 +71,35 @@ function buildPrompt(data) {
   const blogs = data.blogs || [];
   const stats = data.stats || {};
 
-  const podcastsSection = podcasts.slice(0, 5).map((p, i) =>
-`${i + 1}. **${p.name || 'Unknown Podcast'}** by ${p.author || 'Unknown'}
-   ${(p.description || '').replace(/\n/g, ' ').trim().slice(0, 280)}
-   ${p.url ? `\n   Link: ${p.url}` : ''}`
-  ).join('\n\n');
+  const podcastsSection = podcasts.slice(0, 5).map((p, i) => {
+    const episodeTitle = p.title || p.name || 'Unknown Episode';
+    const showName = p.name && p.title ? p.name : (p.author || 'Unknown');
+    const desc = (p.description || p.transcript || '').replace(/\n/g, ' ').trim().slice(0, 600);
+    const url = improvePodcastUrl(p.url, p.title || p.name);
+    return `${i + 1}. Show: **${showName}**
+   Episode: ${episodeTitle}
+   Description: ${desc}
+   URL: ${url}`;
+  }).join('\n\n');
 
   const buildersSection = builders.slice(0, 8).map((b, i) => {
     const topTweet = (b.tweets || [])[0] || {};
-    // Strip t.co shortened links from display text — they're opaque without expansion
+    // Strip t.co shortened links — they're opaque without expansion and confuse the LLM
     const text = (topTweet.text || b.bio || '')
       .replace(/https:\/\/t\.co\/\S+/g, '')
       .replace(/\n/g, ' ')
       .trim()
-      .slice(0, 280);
+      .slice(0, 500);
     const url = topTweet.url || `https://x.com/${b.handle}`;
-    return `${i + 1}. **@${b.handle}**${b.name ? ` (${b.name})` : ''}\n   ${text}\n   URL: ${url}`;
+    return `${i + 1}. **@${b.handle}**${b.name ? ` (${b.name})` : ''}
+   Tweet: ${text}
+   URL: ${url}`;
   }).join('\n\n');
 
   const blogsSection = blogs.slice(0, 3).map((b, i) =>
 `${i + 1}. **${b.title || 'Untitled'}**
-   ${(b.summary || '').replace(/\n/g, ' ').trim().slice(0, 200)}
-   ${b.url ? `\n   Link: ${b.url}` : ''}`
+   ${(b.summary || '').replace(/\n/g, ' ').trim().slice(0, 400)}
+   URL: ${b.url || ''}`
   ).join('\n\n');
 
   return `You are writing the AI Builders Daily Digest for ${today}.
@@ -71,35 +107,44 @@ function buildPrompt(data) {
 ## Source Data
 
 ### Podcasts
-${podcastsSection}
+${podcastsSection || '(no podcasts today)'}
 
 ### X / Twitter Builders
-${buildersSection}
+${buildersSection || '(no tweets today)'}
 
 ### Blog Posts
-${blogsSection}
+${blogsSection || '(no blog posts today)'}
 
 ## Instructions
 - Pick the 3–5 most interesting items total across all sources
 - Write each item ONCE — no bilingual repetition, no parallel paragraphs
-- Language: Simplified Chinese (use English only for proper nouns/model names)
-- Tone: concise, insightful — like a smart friend's WeChat message
-- Each card summary: maximum 150 Chinese characters
-- URLs: copy the exact URL from the source data above — do NOT invent, shorten, or modify any URL
+- Language: Simplified Chinese (English is OK for proper nouns, model names, technical terms)
+- Tone: insightful and substantive — give the reader enough context to understand WHY this matters, not just WHAT happened
+- Each card body: 150–300 Chinese characters (2–4 sentences). Go deeper than a one-line summary.
+- URLs: copy the exact URL from the source data above — do NOT invent, shorten, or modify any URL. Use the URL field verbatim.
 
-## Output Format (strict — nothing before or after)
+## Output Format (strict — output exactly this, nothing before or after)
 
-🤖 AI Builders Digest · ${today}
+🤖 **AI Builders Digest**
+📅 ${today}
 
-[For each item use exactly this card layout:]
+━━━━━━━━━━━━━━━━━━━━
 
-{section-emoji} **{Title or @handle}**
-{1–2 sentences, max 150 Chinese characters}
-🔗 {exact URL from source data}
+[For each item, output exactly this card block:]
 
-[blank line between cards]
+{section-emoji} **{headline in Simplified Chinese — bold, punchy, 15–25 chars}**
+_{one-line subtitle: who + what, e.g. "Ryan Lopopolo · OpenAI Codex"}_
 
----
+{2–4 sentence body paragraph in Simplified Chinese, 150–300 chars.
+Explain the core insight, why it matters, and what's actually new.
+Do NOT merely translate the source — synthesize and add context.}
+
+🔗 {exact URL from source data, copied verbatim}
+
+━━━━━━━━━━━━━━━━━━━━
+
+[repeat for each item, always ending each card with the ━ separator line]
+
 _由 AI 自动生成 · AI Builders Digest_
 
 Section emojis: 🎙️ for podcasts · 🐦 for X/Twitter · 📝 for blogs
