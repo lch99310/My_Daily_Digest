@@ -18,6 +18,12 @@ if (!CHAT_ID)            { console.error('ERROR: GEOPO_TELEGRAM_CHAT_ID is requi
 const MAX_TOKENS  = 4096;
 const OUTPUT_FILE = '/tmp/geopo-briefing.md';
 
+// Minimum acceptable response length. A full briefing (6 cards + summary)
+// must be at least ~1500 chars; anything shorter means the model truncated
+// or couldn't follow the format, so we reject it and let the race continue
+// to a larger model.
+const MIN_CONTENT_LENGTH = 1500;
+
 // Free RSS feeds for geopolitical news — no API key needed
 const NEWS_FEEDS = [
   { name: 'Reuters World',      url: 'https://feeds.reuters.com/reuters/worldNews' },
@@ -149,6 +155,13 @@ const FALLBACK_MODELS = [
   'z-ai/glm-4.5-air:free',
 ];
 
+// Filter out models too small to follow a structured multi-card prompt.
+// Patterns: param counts ≤ 4B tend to produce truncated or off-format output.
+const TINY_MODEL_RE = /[-_](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
+function isCapableModel(id) {
+  return !TINY_MODEL_RE.test(id);
+}
+
 async function fetchFreeModels() {
   try {
     const res = await fetch('https://openrouter.ai/api/v1/models', {
@@ -157,9 +170,12 @@ async function fetchFreeModels() {
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
-    const free = (data.data || []).filter(m => m.id.endsWith(':free')).map(m => m.id);
-    console.log(`Discovered ${free.length} free models`);
-    return free.slice(0, 20);
+    const free = (data.data || [])
+      .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
+      .map(m => m.id);
+    console.log(`Discovered ${free.length} capable free models`);
+    // Cap at 10 to stay within 50 req/day free-tier budget (2 workflows × 10 = 20/day)
+    return free.slice(0, 10);
   } catch (err) {
     console.warn(`Model list failed (${err.message}), using fallback`);
     return FALLBACK_MODELS;
@@ -194,6 +210,9 @@ async function callModel(model, prompt, raceSignal) {
     const result  = await response.json();
     const content = (result.choices?.[0]?.message?.content || '').trim();
     if (!content) throw new Error('Empty response');
+    if (content.length < MIN_CONTENT_LENGTH) {
+      throw new Error(`Response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+    }
     return content;
   } catch (err) {
     if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');

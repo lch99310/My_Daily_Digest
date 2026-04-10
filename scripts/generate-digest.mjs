@@ -28,6 +28,16 @@ const FALLBACK_MODELS = [
 
 const MAX_TOKENS = 4096;
 
+// Minimum response length — a valid digest (3–5 cards) must be at least ~600 chars.
+// Models smaller than ~7B often produce truncated or off-format output; reject them.
+const MIN_CONTENT_LENGTH = 600;
+
+// Filter out models too small to follow structured prompts (≤4B params)
+const TINY_MODEL_RE = /[-_](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
+function isCapableModel(id) {
+  return !TINY_MODEL_RE.test(id);
+}
+
 // -- URL helpers -------------------------------------------------------------
 
 /**
@@ -154,11 +164,11 @@ async function fetchFreeModels() {
     if (!res.ok) throw new Error(`models API ${res.status}`);
     const data = await res.json();
     const free = (data.data || [])
-      .filter(m => m.id.endsWith(':free'))
+      .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
       .map(m => m.id);
-    console.log(`Discovered ${free.length} free models on OpenRouter`);
-    // Cap to avoid firing hundreds of parallel requests
-    return free.slice(0, 20);
+    console.log(`Discovered ${free.length} capable free models on OpenRouter`);
+    // Cap at 10 to stay within 50 req/day free-tier budget (2 workflows × 10 = 20/day)
+    return free.slice(0, 10);
   } catch (err) {
     console.warn(`Could not fetch model list (${err.message}), using fallback list`);
     return FALLBACK_MODELS;
@@ -203,6 +213,9 @@ async function callOpenRouter(model, prompt, raceSignal) {
     const result = await response.json();
     const content = (result.choices?.[0]?.message?.content || '').trim();
     if (!content) throw new Error('Empty response body from model');
+    if (content.length < MIN_CONTENT_LENGTH) {
+      throw new Error(`Response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+    }
     return content;
   } catch (err) {
     if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');
