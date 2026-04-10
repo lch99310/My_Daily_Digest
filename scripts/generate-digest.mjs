@@ -106,11 +106,11 @@ ${buildersSection || '(no tweets today)'}
 ${blogsSection || '(no blog posts today)'}
 
 ## Instructions
-- Pick 3–5 items total. Each item becomes exactly ONE card.
+- Pick 10 items total. Each item becomes exactly ONE card.
 - Every card MUST have all three parts: 標題, 摘要, 連結. No exceptions.
-- Language: Simplified Chinese. English only for proper nouns / model names.
+- Language: traditional Chinese. The content must present in the content what native traditional chinese would speak. The style should similar to LatePost 晚點 article. English only for proper nouns / model names.
 - Tone: insightful — tell the reader WHY it matters, not just what happened.
-- 摘要 length: 100–200 Chinese characters (2–3 sentences). Be substantive.
+- 摘要 length: 150-250 Chinese characters (2–3 sentences). Be substantive.
 - 連結: copy verbatim from the URL field in the source data. Do NOT invent or change any URL.
 - Write each item ONCE. No bilingual repetition.
 
@@ -125,7 +125,7 @@ Output ONLY the cards below — nothing before the header, nothing after the foo
 
 ━━━━━━━━━━━━━━━━━━━━
 {emoji} **標題：{punchy headline in Chinese, 10–20 chars}**
-📝 摘要：{100–200 char body. Synthesize the insight — why does this matter? What is actually new?}
+📝 摘要：{150-250 Chinese characters (2–3 sentences) body. Synthesize the insight — why does this matter? What is actually new?}
 🔗 連結：{exact URL copied verbatim from source data}
 
 [end of all cards]
