@@ -1,0 +1,56 @@
+name: Daily Geopolitical Briefing
+
+on:
+  # Run every day at 8am Sydney (UTC+10) = 22:00 UTC
+  # One hour after the AI digest so they don't race for the same models
+  schedule:
+    - cron: '0 22 * * *'
+
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+# Only one briefing run at a time
+concurrency:
+  group: geopo-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  geopo:
+    name: Generate & Deliver Geopolitical Briefing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. Checkout
+      # ------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 2. Setup Node.js
+      # ------------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ------------------------------------------------------------------
+      # 3. Generate briefing and deliver to Telegram
+      # ------------------------------------------------------------------
+      - name: Generate and deliver geopolitical briefing
+        env:
+          OPENROUTER_API_KEY:        ${{ secrets.OPENROUTER_API_KEY }}
+          GEOPO_TELEGRAM_BOT_TOKEN:  ${{ secrets.GEOPO_TELEGRAM_BOT_TOKEN }}
+          GEOPO_TELEGRAM_CHAT_ID:    ${{ secrets.GEOPO_TELEGRAM_CHAT_ID }}
+        run: node scripts/geopo-digest.mjs
+
+      # ------------------------------------------------------------------
+      # 4. Upload briefing as artifact (for review)
+      # ------------------------------------------------------------------
+      - name: Upload briefing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: geopo-briefing-${{ github.run_number }}
+          path: /tmp/geopo-briefing.md
+          retention-days: 7
