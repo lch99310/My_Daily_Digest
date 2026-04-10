@@ -124,8 +124,8 @@ Output ONLY the cards below — nothing before the header, nothing after the foo
 [repeat this block for each card — exactly 3 parts per card:]
 
 ━━━━━━━━━━━━━━━━━━━━
-{emoji} **標題：{punchy headline in Chinese, 10–20 chars}**
-📝 摘要：{150-250 Chinese characters (2–3 sentences) body. Synthesize the insight — why does this matter? What is actually new?}
+{emoji} **標題：{一句話事件標題，20字以內}**
+📝 摘要：{2至3句話，說明事件背景與最新進展，100至150字. Synthesize the insight — why does this matter? What is actually new?}
 🔗 連結：{exact URL copied verbatim from source data}
 
 [end of all cards]
