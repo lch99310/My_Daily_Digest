@@ -177,20 +177,10 @@ async function fetchFreeModels() {
 
 // -- Call one model -----------------------------------------------------------
 
-/**
- * @param {string} model
- * @param {string} prompt
- * @param {AbortSignal} [raceSignal]  — set by raceModels() to cancel losers
- */
-async function callOpenRouter(model, prompt, raceSignal) {
-  // Combine per-model 90s timeout with the race-winner abort signal
-  const signals = [AbortSignal.timeout(90_000)];
-  if (raceSignal) signals.push(raceSignal);
-  const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
-
+async function callOpenRouter(model, prompt) {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal,
+      signal: AbortSignal.timeout(90_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -219,43 +209,27 @@ async function callOpenRouter(model, prompt, raceSignal) {
     return content;
   } catch (err) {
     if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');
-    if (err.name === 'AbortError') throw new Error('Cancelled (another model won)');
     throw err;
   }
 }
 
-// -- Race all models in parallel ---------------------------------------------
+// -- Try models sequentially -------------------------------------------------
 
-/**
- * Fires requests to all models simultaneously.
- * The first model to return a non-empty response wins.
- * All other in-flight requests are aborted immediately.
- */
-async function raceModels(models, prompt) {
-  const controller = new AbortController();
-
-  const attempts = models.map(async (model) => {
+// Try each model one at a time — stop at the first success.
+// This costs only 1 API request on a good day, vs N for parallel racing,
+// which is critical for staying within the 50 req/day free-tier budget.
+async function tryModelsSequentially(models, prompt) {
+  for (const model of models) {
     try {
-      const result = await callOpenRouter(model, prompt, controller.signal);
-      // This model won — cancel everyone else
-      controller.abort();
-      console.log(`✓ Winner: ${model}`);
+      console.log(`Trying ${model}...`);
+      const result = await callOpenRouter(model, prompt);
+      console.log(`✓ Success: ${model}`);
       return result;
     } catch (err) {
-      // Don't log cancellation noise from aborted losers
-      if (!err.message.includes('Cancelled') && !controller.signal.aborted) {
-        console.warn(`✗ ${model}: ${err.message.slice(0, 100)}`);
-      }
-      throw err;
+      console.warn(`✗ ${model}: ${err.message.slice(0, 120)}`);
     }
-  });
-
-  try {
-    return await Promise.any(attempts);
-  } catch {
-    // AggregateError — every model failed
-    throw new Error('All OpenRouter models failed');
   }
+  throw new Error('All OpenRouter models failed');
 }
 
 // -- Main --------------------------------------------------------------------
@@ -267,10 +241,10 @@ async function main() {
   console.log(`Feed loaded: ${data.stats?.podcastEpisodes || 0} podcasts, ${data.stats?.xBuilders || 0} builders`);
 
   const models = await fetchFreeModels();
-  console.log(`Racing ${models.length} models in parallel…`);
+  console.log(`Trying up to ${models.length} models sequentially…`);
 
   const prompt = buildPrompt(data);
-  let digest = await raceModels(models, prompt);
+  let digest = await tryModelsSequentially(models, prompt);
 
   // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();

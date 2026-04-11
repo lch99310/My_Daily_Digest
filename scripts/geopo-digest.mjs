@@ -182,14 +182,10 @@ async function fetchFreeModels() {
   }
 }
 
-async function callModel(model, prompt, raceSignal) {
-  const signals = [AbortSignal.timeout(90_000)];
-  if (raceSignal) signals.push(raceSignal);
-  const signal = AbortSignal.any(signals);
-
+async function callModel(model, prompt) {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal,
+      signal: AbortSignal.timeout(90_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -216,31 +212,26 @@ async function callModel(model, prompt, raceSignal) {
     return content;
   } catch (err) {
     if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');
-    if (err.name === 'AbortError')   throw new Error('Cancelled (another model won)');
     throw err;
   }
 }
 
-async function raceModels(models, prompt) {
-  const controller = new AbortController();
-  const attempts = models.map(async (model) => {
+// Try models one at a time — stop at the first success.
+// Sequential fallback costs only 1 request on a good day, vs N for parallel racing.
+// Each model call is individually rate-limited to 90s so the workflow still finishes
+// within the 20-min timeout even if the first few models time out.
+async function tryModelsSequentially(models, prompt) {
+  for (const model of models) {
     try {
-      const result = await callModel(model, prompt, controller.signal);
-      controller.abort();
-      console.log(`✓ Winner: ${model}`);
+      console.log(`Trying ${model}...`);
+      const result = await callModel(model, prompt);
+      console.log(`✓ Success: ${model}`);
       return result;
     } catch (err) {
-      if (!err.message.includes('Cancelled') && !controller.signal.aborted) {
-        console.warn(`✗ ${model}: ${err.message.slice(0, 100)}`);
-      }
-      throw err;
+      console.warn(`✗ ${model}: ${err.message.slice(0, 120)}`);
     }
-  });
-  try {
-    return await Promise.any(attempts);
-  } catch {
-    throw new Error('All OpenRouter models failed');
   }
+  throw new Error('All OpenRouter models failed');
 }
 
 // -- Telegram delivery -------------------------------------------------------
@@ -296,10 +287,10 @@ async function main() {
   }
 
   const models = await fetchFreeModels();
-  console.log(`Racing ${models.length} models in parallel...`);
+  console.log(`Trying up to ${models.length} models sequentially...`);
 
   const prompt   = buildPrompt(unique);
-  let   briefing = await raceModels(models, prompt);
+  let   briefing = await tryModelsSequentially(models, prompt);
 
   // Strip code fences if model wrapped the output
   briefing = briefing.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
