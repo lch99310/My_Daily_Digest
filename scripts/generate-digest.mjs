@@ -260,12 +260,21 @@ async function fetchFreeModels() {
   }
 }
 
-// -- Call one model -----------------------------------------------------------
+// -- Call one model (streaming with idle detection) ---------------------------
+
+// Streaming timeout constants:
+// - IDLE_TIMEOUT: if no SSE data arrives for this long, model is unresponsive → abort fast
+// - ABSOLUTE_TIMEOUT: hard cap on total generation time, even if tokens are still flowing
+const IDLE_TIMEOUT     = 30_000;   // 30s — no data = dead model, move on
+const ABSOLUTE_TIMEOUT = 180_000;  // 3min — hard cap even for active models
 
 async function callOpenRouter(model, prompt) {
+  const controller = new AbortController();
+  const absoluteTimer = setTimeout(() => controller.abort(), ABSOLUTE_TIMEOUT);
+
+  let response;
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal: AbortSignal.timeout(120_000),
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -277,25 +286,72 @@ async function callOpenRouter(model, prompt) {
         model,
         max_tokens: MAX_TOKENS,
         messages: [{ role: 'user', content: prompt }],
+        stream: true,
       }),
+      signal: controller.signal,
     });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`${response.status}: ${err}`);
-    }
-
-    const result = await response.json();
-    const content = (result.choices?.[0]?.message?.content || '').trim();
-    if (!content) throw new Error('Empty response body from model');
-    if (content.length < MIN_CONTENT_LENGTH) {
-      throw new Error(`Response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
-    }
-    return content;
   } catch (err) {
-    if (err.name === 'TimeoutError') throw new Error('Timed out after 120s');
+    clearTimeout(absoluteTimer);
+    if (err.name === 'AbortError') throw new Error('Connection timed out (180s)');
     throw err;
   }
+
+  if (!response.ok) {
+    clearTimeout(absoluteTimer);
+    const err = await response.text();
+    throw new Error(`${response.status}: ${err}`);
+  }
+
+  // Read SSE stream with idle detection.
+  // Every time data arrives we reset the idle timer.
+  // If nothing arrives for IDLE_TIMEOUT → model stalled → abort early.
+  let content = '';
+  let idleTimer;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), IDLE_TIMEOUT);
+  };
+  resetIdle(); // start first idle countdown
+
+  try {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetIdle(); // data arrived — reset idle timer
+      const text = decoder.decode(value, { stream: true });
+      for (const line of text.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content || '';
+          content += delta;
+        } catch { /* skip malformed SSE lines */ }
+      }
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (content.length > 0) {
+        throw new Error(`Stalled after ${content.length} chars (idle >${IDLE_TIMEOUT / 1000}s)`);
+      }
+      throw new Error(`No tokens received within ${IDLE_TIMEOUT / 1000}s — model unresponsive`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(idleTimer);
+    clearTimeout(absoluteTimer);
+  }
+
+  content = content.trim();
+  if (!content) throw new Error('Empty response body from model');
+  if (content.length < MIN_CONTENT_LENGTH) {
+    throw new Error(`Response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+  }
+  return content;
 }
 
 // -- Try models sequentially -------------------------------------------------
