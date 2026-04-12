@@ -40,7 +40,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Generate and deliver geopolitical briefing
         env:
-          OPENROUTER_API_KEY:        ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_FREE_API_KEY:        ${{ secrets.OPENROUTER_FREE_API_KEY }}
           GEOPO_TELEGRAM_BOT_TOKEN:  ${{ secrets.GEOPO_TELEGRAM_BOT_TOKEN }}
           GEOPO_TELEGRAM_CHAT_ID:    ${{ secrets.GEOPO_TELEGRAM_CHAT_ID }}
         run: node scripts/geopo-digest.mjs
