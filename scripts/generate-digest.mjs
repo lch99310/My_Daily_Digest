@@ -20,11 +20,17 @@ const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
 // Used as fallback if the live model-list API fails.
 // Models that return empty bodies (nvidia nemotron) are excluded.
 const FALLBACK_MODELS = [
+  'minimax/minimax-m2.5:free',
   'deepseek/deepseek-r1:free',
   'google/gemma-3-27b-it:free',
   'microsoft/phi-4:free',
   'google/gemma-4-26b-a4b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
+];
+
+// Models to try first — sorted to the front of the discovered list.
+const PREFERRED_MODELS = [
+  'minimax/minimax-m2.5:free',
 ];
 
 const MAX_TOKENS = 4096;
@@ -38,8 +44,9 @@ const MIN_CONTENT_LENGTH = 600;
 // used by models like gemma-3n-e2b-it and gemma-3n-e4b-it.
 const TINY_MODEL_RE = /[-_e](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
 
-// Block providers/models known to consistently time out or return empty bodies.
-const BLOCKED_MODEL_RE = /^minimax\/|^arcee-ai\/|^nvidia\/nemotron|^z-ai\//;
+// Only block models known to return empty/broken responses.
+// Do NOT block slow models here — a 60s timeout handles those.
+const BLOCKED_MODEL_RE = /^nvidia\/nemotron/;
 
 function isCapableModel(id) {
   return !TINY_MODEL_RE.test(id) && !BLOCKED_MODEL_RE.test(id);
@@ -233,6 +240,15 @@ async function fetchFreeModels() {
     const free = (data.data || [])
       .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
       .map(m => m.id);
+    // Sort preferred models to the front so they get tried first
+    free.sort((a, b) => {
+      const aPref = PREFERRED_MODELS.indexOf(a);
+      const bPref = PREFERRED_MODELS.indexOf(b);
+      if (aPref !== -1 && bPref !== -1) return aPref - bPref;
+      if (aPref !== -1) return -1;
+      if (bPref !== -1) return 1;
+      return 0;
+    });
     console.log(`Discovered ${free.length} capable free models on OpenRouter`);
     // Cap at 20. OpenRouter free tier: 50 RPD (no credits).
     // 2 workflows × 20 = 40 max/day, leaving a 10-request buffer.
