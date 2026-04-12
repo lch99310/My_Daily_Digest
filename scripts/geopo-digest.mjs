@@ -7,11 +7,11 @@
 
 import { writeFile } from 'fs/promises';
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
 const BOT_TOKEN          = process.env.GEOPO_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID            = process.env.GEOPO_TELEGRAM_CHAT_ID || '';
 
-if (!OPENROUTER_API_KEY) { console.error('ERROR: OPENROUTER_API_KEY is required'); process.exit(1); }
+if (!OPENROUTER_FREE_API_KEY) { console.error('ERROR: OPENROUTER_FREE_API_KEY is required'); process.exit(1); }
 if (!BOT_TOKEN)          { console.error('ERROR: GEOPO_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
 if (!CHAT_ID)            { console.error('ERROR: GEOPO_TELEGRAM_CHAT_ID is required'); process.exit(1); }
 
@@ -29,8 +29,11 @@ const NEWS_FEEDS = [
   { name: 'Reuters World',      url: 'https://feeds.reuters.com/reuters/worldNews' },
   { name: 'BBC World',          url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
   { name: 'Al Jazeera',         url: 'https://www.aljazeera.com/xml/rss/all.xml' },
-  { name: 'Reddit WorldNews',   url: 'https://www.reddit.com/r/worldnews/top/.rss?t=day' },
-  { name: 'Reddit Geopolitics', url: 'https://www.reddit.com/r/geopolitics/top/.rss?t=day' },
+  { name: 'Financial Times',    url: 'https://news.google.com/rss/search?q=when:24h+allinurl:ft.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'SCMP',               url: 'https://news.google.com/rss/search?q=when:24h+allinurl:scmp.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'WSJ',                url: 'https://news.google.com/rss/search?q=when:24h+allinurl:wsj.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'Bloomberg',          url: 'https://news.google.com/rss/search?q=when:24h+allinurl:bloomberg.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'Nikkei Asia',        url: 'https://news.google.com/rss/search?q=when:24h+allinurl:asia.nikkei.com&hl=en-US&gl=US&ceid=US:en' },
 ];
 
 // -- RSS parser (no npm) -----------------------------------------------------
@@ -112,7 +115,11 @@ ${articleList}
   - 強調事實、脈絡與連動關係，拒絕模糊形容詞
   - 句子俐落、資訊密度高
 - **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「Reuters、BBC」）。不得自行編造來源。
-- **資料取材**：要選擇對地緣風險影響大的事件 (包含：軍事, 經濟..等, 會對地緣格局影響大的事件)。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期局勢的掌握，但當前卡片仍須對應到真實的新聞事件。 如果是 “中國周邊高風險地緣政治事件 (Top 3)”裡面的卡片內容 就要選取 在中國周邊（地理上的周邊）發生的重大地緣風險事件. 如果是 “全球其他重大地緣政治事件 (Top 3)”裡面的卡片內容 就要選取 在其他地方(非中國地理上周邊地方)發生的重大地緣風險事件. 
+- **資料取材**：要選擇對地緣風險影響大的事件（包含：軍事、經濟等會對地緣格局影響大的事件）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期局勢的掌握，但當前卡片仍須對應到真實的新聞事件。
+- **地理分區規則（嚴格遵守）**：
+  - 🔴「中國周邊高風險地緣政治事件 (Top 3)」：**僅限**發生在地理上中國周邊區域的重大地緣風險事件。所謂「中國周邊」指：台灣海峽、南海、東海、朝鮮半島、中印邊境、中亞鄰國、東南亞、日本、菲律賓等與中國地理上直接相鄰或密切關聯的區域。
+  - 🌍「全球其他重大地緣政治事件 (Top 3)」：**僅限**發生在地理上非中國周邊的其他地區的重大地緣風險事件。例如：中東、歐洲、非洲、美洲、南亞（不含中印邊境）等地區。
+  - 請勿將兩個分區的事件混淆歸類。判斷標準是事件的**地理發生地點**，而非涉及的國家。
 
 
 ## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
@@ -188,7 +195,7 @@ function isCapableModel(id) {
 async function fetchFreeModels() {
   try {
     const res = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}` },
+      headers: { 'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}` },
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`${res.status}`);
@@ -212,7 +219,7 @@ async function callModel(model, prompt) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}`,
         'HTTP-Referer': 'https://github.com/lch99310/ai-daily-digest-from-twitter-x',
         'X-Title': 'Geopo Digest',
       },

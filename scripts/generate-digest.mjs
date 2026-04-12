@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = process.env.GITHUB_WORKSPACE || resolve(__dirname, '..');
 const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
 
 // Known-working free models (confirmed via 429 = endpoint exists).
 // Used as fallback if the live model-list API fails.
@@ -218,7 +218,7 @@ function substituteUrls(digest, urlMap) {
 async function fetchFreeModels() {
   try {
     const res = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}` },
+      headers: { 'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}` },
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`models API ${res.status}`);
@@ -244,7 +244,7 @@ async function callOpenRouter(model, prompt) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}`,
         'HTTP-Referer': 'https://github.com/lch99310/ai-daily-digest-from-twitter-x',
         'X-Title': 'AI Builders Digest',
       },
