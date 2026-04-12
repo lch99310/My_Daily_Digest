@@ -20,10 +20,11 @@ const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
 // Used as fallback if the live model-list API fails.
 // Models that return empty bodies (nvidia nemotron) are excluded.
 const FALLBACK_MODELS = [
+  'deepseek/deepseek-r1:free',
+  'google/gemma-3-27b-it:free',
+  'microsoft/phi-4:free',
   'google/gemma-4-26b-a4b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
-  'z-ai/glm-4.5-air:free',
 ];
 
 const MAX_TOKENS = 4096;
@@ -32,10 +33,16 @@ const MAX_TOKENS = 4096;
 // Models smaller than ~7B often produce truncated or off-format output; reject them.
 const MIN_CONTENT_LENGTH = 600;
 
-// Filter out models too small to follow structured prompts (≤4B params)
-const TINY_MODEL_RE = /[-_](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
+// Filter out models too small to follow structured prompts (≤4B params).
+// Catches both conventional naming (-2b-, _4b:) and "effective params" naming (e2b, e4b)
+// used by models like gemma-3n-e2b-it and gemma-3n-e4b-it.
+const TINY_MODEL_RE = /[-_e](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
+
+// Block providers/models known to consistently time out or return empty bodies.
+const BLOCKED_MODEL_RE = /^minimax\/|^arcee-ai\/|^nvidia\/nemotron|^z-ai\//;
+
 function isCapableModel(id) {
-  return !TINY_MODEL_RE.test(id);
+  return !TINY_MODEL_RE.test(id) && !BLOCKED_MODEL_RE.test(id);
 }
 
 // -- URL helpers -------------------------------------------------------------
@@ -227,8 +234,10 @@ async function fetchFreeModels() {
       .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
       .map(m => m.id);
     console.log(`Discovered ${free.length} capable free models on OpenRouter`);
-    // Cap at 10 to stay within 50 req/day free-tier budget (2 workflows × 10 = 20/day)
-    return free.slice(0, 10);
+    // Cap at 20. OpenRouter free tier: 50 RPD (no credits).
+    // 2 workflows × 20 = 40 max/day, leaving a 10-request buffer.
+    // On a good day only 1 model attempt fires per workflow (2 total).
+    return free.slice(0, 20);
   } catch (err) {
     console.warn(`Could not fetch model list (${err.message}), using fallback list`);
     return FALLBACK_MODELS;
@@ -240,7 +249,7 @@ async function fetchFreeModels() {
 async function callOpenRouter(model, prompt) {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(60_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -268,7 +277,7 @@ async function callOpenRouter(model, prompt) {
     }
     return content;
   } catch (err) {
-    if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');
+    if (err.name === 'TimeoutError') throw new Error('Timed out after 60s');
     throw err;
   }
 }

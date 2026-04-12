@@ -179,17 +179,24 @@ ${articleList}
 // -- OpenRouter (parallel race — same pattern as generate-digest.mjs) --------
 
 const FALLBACK_MODELS = [
+  'deepseek/deepseek-r1:free',
+  'google/gemma-3-27b-it:free',
+  'microsoft/phi-4:free',
   'google/gemma-4-26b-a4b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
-  'z-ai/glm-4.5-air:free',
 ];
 
 // Filter out models too small to follow a structured multi-card prompt.
-// Patterns: param counts ≤ 4B tend to produce truncated or off-format output.
-const TINY_MODEL_RE = /[-_](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
+// ≤4B params tend to produce truncated or off-format output.
+// Catches both conventional naming (-2b-, _4b:) and "effective params" naming (e2b, e4b)
+// used by models like gemma-3n-e2b-it and gemma-3n-e4b-it.
+const TINY_MODEL_RE = /[-_e](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
+
+// Block providers/models known to consistently time out or return empty bodies.
+const BLOCKED_MODEL_RE = /^minimax\/|^arcee-ai\/|^nvidia\/nemotron|^z-ai\//;
+
 function isCapableModel(id) {
-  return !TINY_MODEL_RE.test(id);
+  return !TINY_MODEL_RE.test(id) && !BLOCKED_MODEL_RE.test(id);
 }
 
 async function fetchFreeModels() {
@@ -204,8 +211,10 @@ async function fetchFreeModels() {
       .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
       .map(m => m.id);
     console.log(`Discovered ${free.length} capable free models`);
-    // Cap at 10 to stay within 50 req/day free-tier budget (2 workflows × 10 = 20/day)
-    return free.slice(0, 10);
+    // Cap at 20. OpenRouter free tier: 50 RPD (no credits).
+    // 2 workflows × 20 = 40 max/day, leaving a 10-request buffer.
+    // On a good day only 1 model attempt fires per workflow (2 total).
+    return free.slice(0, 20);
   } catch (err) {
     console.warn(`Model list failed (${err.message}), using fallback`);
     return FALLBACK_MODELS;
@@ -215,7 +224,7 @@ async function fetchFreeModels() {
 async function callModel(model, prompt) {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(60_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -241,14 +250,14 @@ async function callModel(model, prompt) {
     }
     return content;
   } catch (err) {
-    if (err.name === 'TimeoutError') throw new Error('Timed out after 90s');
+    if (err.name === 'TimeoutError') throw new Error('Timed out after 60s');
     throw err;
   }
 }
 
 // Try models one at a time — stop at the first success.
 // Sequential fallback costs only 1 request on a good day, vs N for parallel racing.
-// Each model call is individually rate-limited to 90s so the workflow still finishes
+// Each model call is individually rate-limited to 60s so the workflow still finishes
 // within the 20-min timeout even if the first few models time out.
 async function tryModelsSequentially(models, prompt) {
   for (const model of models) {
