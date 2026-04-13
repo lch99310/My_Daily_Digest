@@ -1,0 +1,56 @@
+name: Daily Data Center Briefing
+
+on:
+  # Run every day at 7am Sydney (UTC+10) = 21:00 UTC
+  # One hour before geopolitical briefing
+  schedule:
+    - cron: '0 21 * * *'
+
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+# Only one briefing run at a time
+concurrency:
+  group: dc-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dc:
+    name: Generate & Deliver Data Center Briefing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. Checkout
+      # ------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 2. Setup Node.js
+      # ------------------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ------------------------------------------------------------------
+      # 3. Generate briefing and deliver to Telegram
+      # ------------------------------------------------------------------
+      - name: Generate and deliver data center briefing
+        env:
+          OPENROUTER_FREE_API_KEY:  ${{ secrets.OPENROUTER_FREE_API_KEY }}
+          DC_TELEGRAM_BOT_TOKEN:    ${{ secrets.DC_TELEGRAM_BOT_TOKEN }}
+          DC_TELEGRAM_CHAT_ID:      ${{ secrets.DC_TELEGRAM_CHAT_ID }}
+        run: node scripts/dc-digest.mjs
+
+      # ------------------------------------------------------------------
+      # 4. Upload briefing as artifact (for review)
+      # ------------------------------------------------------------------
+      - name: Upload briefing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dc-briefing-${{ github.run_number }}
+          path: /tmp/dc-briefing.md
+          retention-days: 7

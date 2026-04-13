@@ -1,25 +1,27 @@
 # Daily Digest for Geopolitics and AI
 
-Every morning, two curated briefings land in your Telegram — one tracking what
-top AI builders are saying, the other assessing global geopolitical risk with a
-gold market outlook. Zero maintenance, fully automated via GitHub Actions.
+Every morning, three curated briefings land in your Telegram — data center
+industry updates, global geopolitical risk assessment, and what top AI builders
+are saying. Zero maintenance, fully automated via GitHub Actions.
 
 **Philosophy:** Follow builders who ship products and have original opinions,
-not influencers who regurgitate information. Track geopolitical risk through
-quality journalism, not social media noise.
+not influencers who regurgitate information. Track geopolitical risk and
+industry trends through quality journalism, not social media noise.
 
 ## What You Get
 
-### 1. AI Builders Digest (7am Sydney / 21:00 UTC)
+### 1. Data Center Briefing (7am Sydney / 21:00 UTC)
 
-8-10 curated cards summarizing the past 24 hours from top AI builders:
+A structured industry briefing with regional breakdown:
 
-- New podcast episodes from Latent Space, No Priors, Training Data, and more
-- Key posts from 25 curated AI builders on X/Twitter (Karpathy, Swyx, Sam Altman, etc.)
-- Full articles from Anthropic Engineering and Claude Blog
-- Every card links to the original source — no hallucinated URLs
+- **Top 3 APAC events** — Japan, Southeast Asia, Australia, India, China, etc.
+- **Top 3 ROW events** — North America, Europe, Middle East, Africa, Latin America
+- **Bytedance / TikTok tracker** — dedicated section for ByteDance DC activity
+- **Industry trend summary** — key trends with 3 event-linked observations
 
-### 2. Daily Geopolitical Briefing (8am Sydney / 22:00 UTC)
+Sources: DCD, Data Center Knowledge, TechDay Asia, DC Post
+
+### 2. Geopolitical Briefing (8am Sydney / 22:00 UTC)
 
 A structured risk assessment with 6 event cards and a market outlook:
 
@@ -29,7 +31,16 @@ A structured risk assessment with 6 event cards and a market outlook:
 
 Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
 
-Both digests are written in Traditional Chinese with a cold, factual
+### 3. AI Builders Digest (9am Sydney / 23:00 UTC)
+
+8-10 curated cards summarizing the past 24 hours from top AI builders:
+
+- New podcast episodes from Latent Space, No Priors, Training Data, and more
+- Key posts from 25 curated AI builders on X/Twitter (Karpathy, Swyx, Sam Altman, etc.)
+- Full articles from Anthropic Engineering and Claude Blog
+- Every card links to the original source — no hallucinated URLs
+
+All digests are written in Traditional Chinese with a cold, factual
 [LatePost](https://www.latepost.com/)-style tone — no hype, no exclamation marks.
 
 ## Quick Start
@@ -51,11 +62,13 @@ Go to your repo **Settings → Secrets and variables → Actions** and add:
 
 | Secret | Required | Used By |
 |--------|----------|---------|
-| `OPENROUTER_FREE_API_KEY` | Yes | Both digests — get one free at [openrouter.ai](https://openrouter.ai/) |
-| `TELEGRAM_BOT_TOKEN` | Yes (AI digest) | Create via [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_CHAT_ID` | Yes (AI digest) | Get via [@userinfobot](https://t.me/userinfobot) |
+| `OPENROUTER_FREE_API_KEY` | Yes | All digests — get one free at [openrouter.ai](https://openrouter.ai/) |
+| `DC_TELEGRAM_BOT_TOKEN` | Yes (DC) | Create via [@BotFather](https://t.me/BotFather) |
+| `DC_TELEGRAM_CHAT_ID` | Yes (DC) | Get via [@userinfobot](https://t.me/userinfobot) |
 | `GEOPO_TELEGRAM_BOT_TOKEN` | Yes (Geopolitics) | Can reuse the same bot, or create a separate one |
 | `GEOPO_TELEGRAM_CHAT_ID` | Yes (Geopolitics) | The chat/channel ID for geopolitical briefings |
+| `TELEGRAM_BOT_TOKEN` | Yes (AI digest) | Bot token for AI builders digest |
+| `TELEGRAM_CHAT_ID` | Yes (AI digest) | Chat ID for AI builders digest |
 | `RESEND_API_KEY` | Optional | For email delivery ([resend.com](https://resend.com/)) |
 | `EMAIL_TO` | Optional | Recipient email address |
 
@@ -70,32 +83,37 @@ Or you can directly follow following Telegram bots for latest daily digest updat
 
 | Workflow | Schedule | Trigger |
 |----------|----------|---------|
-| AI Builders Digest | Daily 21:00 UTC | `digest.yml` |
+| Data Center Briefing | Daily 21:00 UTC | `dc.yml` |
 | Geopolitical Briefing | Daily 22:00 UTC | `geopo.yml` |
+| AI Builders Digest | Daily 23:00 UTC | `digest.yml` |
 
 ## How It Works
 
 ```
+Data Center Briefing:
+  4 RSS feeds (DCD, DCK, TechDay Asia, DC Post)
+    → dc-digest.mjs (fetch + LLM + Telegram delivery, all-in-one)
+
+Geopolitical Briefing:
+  8 RSS feeds (Reuters, BBC, FT, SCMP, WSJ, Bloomberg, Nikkei, Al Jazeera)
+    → geopo-digest.mjs (fetch + LLM + Telegram delivery, all-in-one)
+
 AI Builders Digest:
   Central feed (zarazhangrui/follow-builders)
     → prepare-digest.js (fetch + filter 24h)
     → generate-digest.mjs (OpenRouter LLM → markdown)
     → deliver-telegram.js + deliver-email.js
-
-Geopolitical Briefing:
-  8 RSS feeds (Reuters, BBC, FT, SCMP, WSJ, Bloomberg, Nikkei, Al Jazeera)
-    → geopo-digest.mjs (fetch + LLM + Telegram delivery, all-in-one)
 ```
 
-Both workflows use OpenRouter's free-tier models with sequential fallback —
-if the first model fails (rate-limited or timeout), it tries the next one
-automatically. No paid API keys required.
+All workflows use OpenRouter's free-tier models with streaming + idle detection:
+if a model is actively generating, it gets up to 3 minutes; if unresponsive for
+30 seconds, it's skipped immediately. No paid API keys required.
 
 ## Customization
 
 ### Change the Schedule
 
-Edit the `cron` field in `.github/workflows/digest.yml` or `geopo.yml`:
+Edit the `cron` field in the workflow files under `.github/workflows/`:
 
 ```yaml
 schedule:
@@ -114,14 +132,12 @@ env:
 
 Or copy `config.example.json` to `config.json` for local development.
 
-### Add or Remove Geopolitical News Sources
+### Add or Remove News Sources
 
-Edit the `NEWS_FEEDS` array in `scripts/geopo-digest.mjs`:
+Edit the `NEWS_FEEDS` array in the respective script:
 
 ```javascript
 const NEWS_FEEDS = [
-  { name: 'Reuters World', url: 'https://feeds.reuters.com/reuters/worldNews' },
-  // Add your own RSS feed here:
   { name: 'Your Source', url: 'https://example.com/rss' },
 ];
 ```
@@ -134,10 +150,17 @@ https://news.google.com/rss/search?q=when:24h+allinurl:example.com&hl=en-US&gl=U
 ### Modify the Digest Style
 
 The LLM prompts are defined directly in the scripts:
-- `scripts/generate-digest.mjs` — AI builders digest format and tone
+- `scripts/dc-digest.mjs` — Data center briefing format, APAC/ROW/Bytedance sections
 - `scripts/geopo-digest.mjs` — Geopolitical briefing format, sections, and gold analysis
+- `scripts/generate-digest.mjs` — AI builders digest format and tone
 
 ## Default Sources
+
+### Data Center News (4 feeds)
+[DCD](https://www.datacenterdynamics.com/) |
+[Data Center Knowledge](https://www.datacenterknowledge.com/) |
+[TechDay Asia](https://datacenternews.asia/) |
+[DC Post](https://datacenterpost.com/)
 
 ### Geopolitical News (8 feeds)
 Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
@@ -162,12 +185,14 @@ Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nik
 ```
 .
 ├── .github/workflows/
-│   ├── digest.yml              # AI Builders workflow (21:00 UTC)
-│   └── geopo.yml               # Geopolitical briefing workflow (22:00 UTC)
+│   ├── dc.yml                  # Data Center briefing workflow (21:00 UTC)
+│   ├── geopo.yml               # Geopolitical briefing workflow (22:00 UTC)
+│   └── digest.yml              # AI Builders workflow (23:00 UTC)
 ├── scripts/
+│   ├── dc-digest.mjs           # Fetch DC RSS + LLM generates DC briefing
+│   ├── geopo-digest.mjs        # Fetch news RSS + LLM generates geopolitical briefing
 │   ├── prepare-digest.js       # Fetch and aggregate AI builder feeds
 │   ├── generate-digest.mjs     # LLM generates AI builders digest
-│   ├── geopo-digest.mjs        # Fetch RSS + LLM generates geopolitical briefing
 │   ├── deliver-telegram.js     # Telegram delivery (chunked, Markdown with fallback)
 │   └── deliver-email.js        # Email delivery via Resend
 └── config.example.json         # Configuration template
@@ -187,8 +212,7 @@ That's it. No paid APIs. No servers. No maintenance.
 
 - OpenRouter free API key is stored as a GitHub Secret — never exposed in logs
 - Telegram bot tokens are stored as GitHub Secrets
-- The AI digest reads only public content (public posts, public podcasts, public blogs)
-- The geopolitical digest reads only public RSS feeds
+- All digests read only public content (public RSS feeds, public posts, public podcasts)
 - No user data is collected or transmitted anywhere
 
 ## License
