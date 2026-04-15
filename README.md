@@ -14,12 +14,13 @@ industry trends through quality journalism, not social media noise.
 
 A structured industry briefing with regional breakdown:
 
-- **Top 3 APAC events** — Japan, Southeast Asia, Australia, India, China, etc.
-- **Top 3 ROW events** — North America, Europe, Middle East, Africa, Latin America
+- **Top 3 APAC events** — Japan, Korea, Taiwan, China/HK, SE Asia, India (excludes Australia/NZ)
+- **Top 3 Australia events** — AU/NZ data center market, tracking NEXTDC, AirTrunk, DCI, Equinix AU, Digital Realty AU, Global Switch, Goodman Group, Macquarie Technology Group, Vocus
+- **Top 3 ROW events** — North America, Europe, Middle East, Africa, Latin America (excludes APAC and Australia)
 - **Bytedance / TikTok tracker** — dedicated section for ByteDance DC activity
 - **Industry trend summary** — key trends with 3 event-linked observations
 
-Sources: DCD, Data Center Knowledge, TechDay Asia, DC Post
+Sources: DCD, Data Center Knowledge, TechDay Asia, DC Post, plus 9 Australia-focused company trackers (Google News AU RSS)
 
 ### 2. Geopolitical Briefing (8am Sydney / 22:00 UTC)
 
@@ -152,17 +153,28 @@ https://news.google.com/rss/search?q=when:24h+allinurl:example.com&hl=en-US&gl=U
 ### Modify the Digest Style
 
 The LLM prompts are defined directly in the scripts:
-- `scripts/dc-digest.mjs` — Data center briefing format, APAC/ROW/Bytedance sections
+- `scripts/dc-digest.mjs` — Data center briefing format, APAC/Australia/ROW/Bytedance sections
 - `scripts/geopo-digest.mjs` — Geopolitical briefing format, sections, and gold analysis
 - `scripts/generate-digest.mjs` — AI builders digest format and tone
 
 ## Default Sources
 
-### Data Center News (4 feeds)
+### Data Center News (industry — 4 feeds)
 [DCD](https://www.datacenterdynamics.com/) |
 [Data Center Knowledge](https://www.datacenterknowledge.com/) |
 [TechDay Asia](https://datacenternews.asia/) |
 [DC Post](https://datacenterpost.com/)
+
+### Data Center News (Australia companies — 9 feeds, via Google News AU RSS)
+[NEXTDC](https://www.nextdc.com/news) |
+[AirTrunk](https://airtrunk.com/news/) |
+[DCI Data Centers](https://www.dcidatacenters.com/news) |
+[Equinix AU](https://newsroom.equinix.com/) |
+[Digital Realty AU](https://www.digitalrealty.com/about/newsroom) |
+[Global Switch](https://www.globalswitch.com/news/announcements/) |
+[Goodman Group](https://www.goodman.com/news-and-insights/media-centre) |
+[Macquarie Technology Group](https://macquarietechnologygroup.com/news/) |
+[Vocus](https://www.vocus.com.au/about/news)
 
 ### Geopolitical News (8 feeds)
 Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia

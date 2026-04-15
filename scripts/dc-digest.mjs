@@ -16,20 +16,36 @@ if (!OPENROUTER_FREE_API_KEY) { console.error('ERROR: OPENROUTER_FREE_API_KEY is
 if (!BOT_TOKEN)          { console.error('ERROR: DC_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
 if (!CHAT_ID)            { console.error('ERROR: DC_TELEGRAM_CHAT_ID is required'); process.exit(1); }
 
-const MAX_TOKENS  = 4096;
+const MAX_TOKENS  = 6000;
 const OUTPUT_FILE = '/tmp/dc-briefing.md';
 
-// Minimum acceptable response length. A full briefing (6+ cards + summary)
-// must be at least ~1500 chars; anything shorter means the model truncated
-// or couldn't follow the format.
-const MIN_CONTENT_LENGTH = 1500;
+// Minimum acceptable response length. A full briefing (12 cards across
+// APAC / Australia / ROW / Bytedance + summary) must be at least ~2000
+// chars; anything shorter means the model truncated or couldn't follow
+// the format.
+const MIN_CONTENT_LENGTH = 2000;
 
 // Data center industry RSS feeds — no API key needed
 const NEWS_FEEDS = [
+  // Industry-wide sources
   { name: 'DCD',          url: 'https://www.datacenterdynamics.com/en/atom/' },
   { name: 'DCK',          url: 'https://www.datacenterknowledge.com/rss.xml' },
   { name: 'TechDay Asia', url: 'https://datacenternews.asia/feed' },
   { name: 'DC Post',      url: 'https://datacenterpost.com/feed/' },
+
+  // Australia-focused company trackers — Google News RSS proxy (AU locale).
+  // These surface both corporate press releases and media coverage, so a
+  // single feed per company captures most 24-hour signal without needing
+  // to scrape each corporate site (many block bot fetches).
+  { name: 'NEXTDC',             url: 'https://news.google.com/rss/search?q=when:24h+%22NEXTDC%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'AirTrunk',           url: 'https://news.google.com/rss/search?q=when:24h+%22AirTrunk%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'DCI Data Centers',   url: 'https://news.google.com/rss/search?q=when:24h+%22DCI+Data+Centers%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Equinix AU',         url: 'https://news.google.com/rss/search?q=when:24h+%22Equinix%22+Australia&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Digital Realty AU',  url: 'https://news.google.com/rss/search?q=when:24h+%22Digital+Realty%22+Australia&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Global Switch',      url: 'https://news.google.com/rss/search?q=when:24h+%22Global+Switch%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Goodman Group',      url: 'https://news.google.com/rss/search?q=when:24h+%22Goodman+Group%22+%22data+centre%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Macquarie Tech',     url: 'https://news.google.com/rss/search?q=when:24h+%22Macquarie+Technology+Group%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Vocus',              url: 'https://news.google.com/rss/search?q=when:24h+%22Vocus%22+Australia&hl=en-AU&gl=AU&ceid=AU:en' },
 ];
 
 // -- RSS parser (no npm) -----------------------------------------------------
@@ -84,7 +100,7 @@ function buildPrompt(articles) {
   const sourceList = sourceSet.join('、');
 
   const articleList = articles
-    .slice(0, 40)
+    .slice(0, 80)
     .map((a, i) => {
       const src = a.source ? ` [來源：${a.source}]` : '';
       return `${i + 1}.${src} ${a.title}${a.desc ? '\n   ' + a.desc : ''}`;
@@ -108,10 +124,11 @@ ${articleList}
 - **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「DCD、DCK」）。不得自行編造來源。
 - **資料取材**：要選擇對資料中心產業影響大的事件（包含：新建/擴建案、併購、技術突破、政策法規、供電/冷卻/AI算力相關、雲端服務商動態等）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期產業動態的掌握，但當前卡片仍須對應到真實的新聞事件。
 - **地理分區與公司追蹤規則（嚴格遵守）**：
-  - 🏗️「APAC 資料中心動態 (Top 3)」：**僅限**地理上發生在亞太地區（APAC）的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度、澳洲、紐西蘭等亞太區域。
-  - 🌐「ROW 資料中心動態 (Top 3)」：**僅限**地理上發生在非 APAC 地區的資料中心產業重大事件。ROW = Rest of World，包含：北美、歐洲、中東、非洲、拉丁美洲等。
+  - 🏗️「APAC 資料中心動態 (Top 3)」：**僅限**地理上發生在亞太地區（APAC），但**不含澳洲與紐西蘭**的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度等亞太區域。
+  - 🇦🇺「澳洲資料中心動態 (Top 3)」：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。若素材不足 3 則，可結合你對近期澳洲資料中心產業動態的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
+  - 🌐「ROW 資料中心動態 (Top 3)」：**僅限**地理上發生在**非 APAC 且非澳洲/紐西蘭**地區的資料中心產業重大事件。ROW = Rest of World，包含：北美、歐洲、中東、非洲、拉丁美洲等。
   - 🔥「Bytedance / TikTok 資料中心動態 (Top 3)」：**僅限**與 ByteDance、TikTok、抖音這家公司相關的資料中心重大消息（不限地區，只看是否與該公司有關）。從上方素材中挑出相關新聞；若素材不足 3 則，可結合你對近期 ByteDance 資料中心動態的掌握補充，但仍須對應到真實事件。如果確實完全無相關消息，則寫「本日無相關更新」。
-  - APAC 與 ROW 的分區判斷標準是事件的**地理發生地點**。Bytedance / TikTok 的判斷標準是**是否與該公司相關**，不限地區。
+  - APAC、澳洲、ROW 三區的分區判斷標準是事件的**地理發生地點**；同一事件只能出現在其中一區，不得重複。Bytedance / TikTok 的判斷標準是**是否與該公司相關**，不限地區，可與地理區並列。
 
 
 ## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
@@ -135,6 +152,28 @@ ${articleList}
 摘要：{2 至 3 句話，100 至 150 字}
 影響：{80 至 120 字}
 來源：{媒體名稱}
+
+🇦🇺 澳洲資料中心動態 (Top 3)
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+{如確實完全無任何澳洲/紐西蘭相關消息，以上卡片替換為：「本日無相關更新」}
 
 🌐 ROW 資料中心動態 (Top 3)
 
