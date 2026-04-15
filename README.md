@@ -30,7 +30,7 @@ A structured risk assessment with 6 event cards and a market outlook:
 - **Top 3 global events** — Middle East, Europe, Africa, Americas
 - **Gold market impact** — bullish/bearish rating with 3 event-linked reasons
 
-Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
+Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia, The War Zone, ミリレポ, 鳳凰軍事, Euronews, ABC News Australia
 
 ### 3. AI Builders Digest (9am Sydney / 23:00 UTC)
 
@@ -176,8 +176,10 @@ The LLM prompts are defined directly in the scripts:
 [Macquarie Technology Group](https://macquarietechnologygroup.com/news/) |
 [Vocus](https://www.vocus.com.au/about/news)
 
-### Geopolitical News (8 feeds)
-Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
+### Geopolitical News (13 feeds)
+General: Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
+Military/defense: [The War Zone](https://www.twz.com/), ミリレポ (Google News JP), 鳳凰軍事 (Google News CN)
+Regional: [Euronews](https://www.euronews.com/), [ABC News Australia](https://www.abc.net.au/news)
 
 ### AI Podcasts (6)
 [Latent Space](https://www.youtube.com/@LatentSpacePod) |

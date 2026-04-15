@@ -27,6 +27,7 @@ const MIN_CONTENT_LENGTH = 1500;
 
 // Free RSS feeds for geopolitical news — no API key needed
 const NEWS_FEEDS = [
+  // General international news
   { name: 'Reuters World',      url: 'https://feeds.reuters.com/reuters/worldNews' },
   { name: 'BBC World',          url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
   { name: 'Al Jazeera',         url: 'https://www.aljazeera.com/xml/rss/all.xml' },
@@ -35,6 +36,15 @@ const NEWS_FEEDS = [
   { name: 'WSJ',                url: 'https://news.google.com/rss/search?q=when:24h+allinurl:wsj.com&hl=en-US&gl=US&ceid=US:en' },
   { name: 'Bloomberg',          url: 'https://news.google.com/rss/search?q=when:24h+allinurl:bloomberg.com&hl=en-US&gl=US&ceid=US:en' },
   { name: 'Nikkei Asia',        url: 'https://news.google.com/rss/search?q=when:24h+allinurl:asia.nikkei.com&hl=en-US&gl=US&ceid=US:en' },
+
+  // Military / defense specialists
+  { name: 'The War Zone',       url: 'https://www.twz.com/feed/' },
+  { name: 'ミリレポ',            url: 'https://news.google.com/rss/search?q=when:24h+%E3%83%9F%E3%83%AA%E3%83%AC%E3%83%9D&hl=ja&gl=JP&ceid=JP:ja' },
+  { name: '鳳凰軍事',            url: 'https://news.google.com/rss/search?q=when:24h+%E5%87%A4%E5%87%B0%E5%86%9B%E4%BA%8B&hl=zh-CN&gl=CN&ceid=CN:zh-Hans' },
+
+  // Regional European / Australian coverage
+  { name: 'Euronews',           url: 'https://www.euronews.com/rss' },
+  { name: 'ABC News Australia', url: 'https://www.abc.net.au/news/feed/51120/rss.xml' },
 ];
 
 // -- RSS parser (no npm) -----------------------------------------------------
@@ -94,7 +104,7 @@ function buildPrompt(articles) {
   const sourceList = sourceSet.join('、');
 
   const articleList = articles
-    .slice(0, 40)
+    .slice(0, 60)
     .map((a, i) => {
       const src = a.source ? ` [來源：${a.source}]` : '';
       return `${i + 1}.${src} ${a.title}${a.desc ? '\n   ' + a.desc : ''}`;
