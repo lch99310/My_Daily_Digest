@@ -16,14 +16,14 @@ if (!OPENROUTER_FREE_API_KEY) { console.error('ERROR: OPENROUTER_FREE_API_KEY is
 if (!BOT_TOKEN)          { console.error('ERROR: GEOPO_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
 if (!CHAT_ID)            { console.error('ERROR: GEOPO_TELEGRAM_CHAT_ID is required'); process.exit(1); }
 
-const MAX_TOKENS  = 4096;
+const MAX_TOKENS  = 5500;
 const OUTPUT_FILE = '/tmp/geopo-briefing.md';
 
-// Minimum acceptable response length. A full briefing (6 cards + summary)
-// must be at least ~1500 chars; anything shorter means the model truncated
-// or couldn't follow the format, so we reject it and let the race continue
-// to a larger model.
-const MIN_CONTENT_LENGTH = 1500;
+// Minimum acceptable response length. A full briefing (8 cards: 5 China-adjacent
+// + 3 global, plus gold summary) must be at least ~2000 chars; anything shorter
+// means the model truncated or couldn't follow the format, so we reject it and
+// let the race continue to a larger model.
+const MIN_CONTENT_LENGTH = 2000;
 
 // Free RSS feeds for geopolitical news — no API key needed
 const NEWS_FEEDS = [
@@ -41,6 +41,10 @@ const NEWS_FEEDS = [
   { name: 'The War Zone',       url: 'https://www.twz.com/feed/' },
   { name: 'ミリレポ',            url: 'https://news.google.com/rss/search?q=when:24h+%E3%83%9F%E3%83%AA%E3%83%AC%E3%83%9D&hl=ja&gl=JP&ceid=JP:ja' },
   { name: '鳳凰軍事',            url: 'https://news.google.com/rss/search?q=when:24h+%E5%87%A4%E5%87%B0%E5%86%9B%E4%BA%8B&hl=zh-CN&gl=CN&ceid=CN:zh-Hans' },
+
+  // Japanese mainstream press (Google News JP locale — site filter)
+  { name: '產經新聞',            url: 'https://news.google.com/rss/search?q=when:24h+allinurl:sankei.com&hl=ja&gl=JP&ceid=JP:ja' },
+  { name: '讀賣新聞',            url: 'https://news.google.com/rss/search?q=when:24h+allinurl:yomiuri.co.jp&hl=ja&gl=JP&ceid=JP:ja' },
 
   // Regional European / Australian coverage
   { name: 'Euronews',           url: 'https://www.euronews.com/rss' },
@@ -128,20 +132,32 @@ ${articleList}
 - **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「Reuters、BBC」）。不得自行編造來源。
 - **資料取材**：要選擇對地緣風險影響大的事件（包含：軍事、經濟等會對地緣格局影響大的事件）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期局勢的掌握，但當前卡片仍須對應到真實的新聞事件。
 - **地理分區規則（嚴格遵守）**：
-  - 🔴「中國周邊高風險地緣政治事件 (Top 3)」：**僅限**發生在地理上中國周邊區域的重大地緣風險事件。所謂「中國周邊」指：台灣海峽、南海、東海、朝鮮半島、中印邊境、中亞鄰國、東南亞、日本、菲律賓等與中國地理上直接相鄰或密切關聯的區域。
+  - 🔴「中國周邊高風險地緣政治事件 (Top 5)」：**僅限**發生在地理上中國周邊區域的重大地緣風險事件，挑出最重要的前 5 則。所謂「中國周邊」指：台灣海峽、南海、東海、朝鮮半島、中印邊境、中亞鄰國、東南亞、日本、菲律賓等與中國地理上直接相鄰或密切關聯的區域。挑選順序以對區域安全格局影響的嚴重性與時效性排序，最重大的放第 1 則。
   - 🌍「全球其他重大地緣政治事件 (Top 3)」：**僅限**發生在地理上非中國周邊的其他地區的重大地緣風險事件。例如：中東、歐洲、非洲、美洲、南亞（不含中印邊境）等地區。
   - 請勿將兩個分區的事件混淆歸類。判斷標準是事件的**地理發生地點**，而非涉及的國家。
 
 
 ## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
 
-🔴 中國周邊高風險地緣政治事件 (Top 3)
+🔴 中國周邊高風險地緣政治事件 (Top 5)
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，說明事件背景與最新進展，100 至 150 字，晚點風格}
 風險：{說明對區域安全或全球秩序的具體威脅，80 至 120 字}
 來源：{從上方清單挑選的媒體名稱，供讀者自行判斷可信度}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}

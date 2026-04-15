@@ -24,13 +24,13 @@ Sources: DCD, Data Center Knowledge, TechDay Asia, DC Post, plus 9 Australia-foc
 
 ### 2. Geopolitical Briefing (8am Sydney / 22:00 UTC)
 
-A structured risk assessment with 6 event cards and a market outlook:
+A structured risk assessment with 8 event cards and a market outlook:
 
-- **Top 3 China-adjacent events** — Taiwan Strait, South China Sea, Korean Peninsula, etc.
+- **Top 5 China-adjacent events** — Taiwan Strait, South China Sea, Korean Peninsula, etc.
 - **Top 3 global events** — Middle East, Europe, Africa, Americas
 - **Gold market impact** — bullish/bearish rating with 3 event-linked reasons
 
-Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia, The War Zone, ミリレポ, 鳳凰軍事, Euronews, ABC News Australia
+Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia, The War Zone, ミリレポ, 鳳凰軍事, 產經新聞, 讀賣新聞, Euronews, ABC News Australia
 
 ### 3. AI Builders Digest (9am Sydney / 23:00 UTC)
 
@@ -176,9 +176,10 @@ The LLM prompts are defined directly in the scripts:
 [Macquarie Technology Group](https://macquarietechnologygroup.com/news/) |
 [Vocus](https://www.vocus.com.au/about/news)
 
-### Geopolitical News (13 feeds)
+### Geopolitical News (15 feeds)
 General: Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
 Military/defense: [The War Zone](https://www.twz.com/), ミリレポ (Google News JP), 鳳凰軍事 (Google News CN)
+Japanese mainstream: [產經新聞](https://www.sankei.com/) (Google News JP), [讀賣新聞](https://www.yomiuri.co.jp/) (Google News JP)
 Regional: [Euronews](https://www.euronews.com/), [ABC News Australia](https://www.abc.net.au/news)
 
 ### AI Podcasts (6)
