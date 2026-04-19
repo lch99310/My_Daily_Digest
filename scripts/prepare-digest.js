@@ -29,14 +29,19 @@
 
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
+import { fileURLToPath } from 'url';
 
 // -- Constants ---------------------------------------------------------------
 
 const USER_DIR = join(homedir(), '.follow-builders');
 const CONFIG_PATH = join(USER_DIR, 'config.json');
 const ENV_PATH = join(USER_DIR, '.env');
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(SCRIPT_DIR, '..');
+const EXTRA_BUILDERS_PATH = join(REPO_ROOT, 'config', 'extra-builders.json');
 
 // Default feed URLs (zarazhangrui/follow-builders)
 const FEED_X_URL_DEFAULT = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-x.json';
@@ -64,6 +69,84 @@ async function fetchText(url) {
   const res = await fetch(url);
   if (!res.ok) return null;
   return res.text();
+}
+
+// -- Extra builders ---------------------------------------------------------
+//
+// Handles listed in config/extra-builders.json are appended to the X feed so
+// the AI digest can include tweets from accounts beyond the upstream list.
+// Tweets are fetched via the public Twitter syndication CDN (no API key
+// required); if the fetch fails, the builder is still included with an empty
+// tweet array, which the 24-hour filter downstream will then drop.
+
+async function fetchTweetsForHandle(handle) {
+  const url = `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(handle)}?showReplies=false`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ai-builders-digest/1.0)',
+      },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!match) return [];
+    const data = JSON.parse(match[1]);
+    const entries = data?.props?.pageProps?.timeline?.entries || [];
+    const tweets = [];
+    for (const entry of entries) {
+      const t = entry?.content?.tweet || entry?.tweet || entry?.content?.item?.content?.tweet;
+      if (!t) continue;
+      const id = t.id_str || t.id;
+      if (!id) continue;
+      tweets.push({
+        id,
+        text: t.full_text || t.text || '',
+        createdAt: t.created_at || t.createdAt || null,
+        url: `https://x.com/${handle}/status/${id}`,
+        likes: t.favorite_count ?? 0,
+        retweets: t.retweet_count ?? 0,
+        replies: t.reply_count ?? 0,
+      });
+    }
+    return tweets;
+  } catch {
+    return [];
+  }
+}
+
+async function loadExtraBuilders() {
+  if (!existsSync(EXTRA_BUILDERS_PATH)) return [];
+  try {
+    const raw = await readFile(EXTRA_BUILDERS_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed?.x) ? parsed.x : [];
+    const builders = await Promise.all(list.map(async (b) => {
+      if (!b?.handle) return null;
+      const tweets = await fetchTweetsForHandle(b.handle);
+      return {
+        source: 'x',
+        name: b.name || b.handle,
+        handle: b.handle,
+        bio: b.bio || '',
+        tweets,
+      };
+    }));
+    return builders.filter(Boolean);
+  } catch (err) {
+    console.warn(`Could not load extra builders: ${err.message}`);
+    return [];
+  }
+}
+
+function mergeBuilders(remote, extra) {
+  const seen = new Set(remote.map(b => b.handle?.toLowerCase()).filter(Boolean));
+  const merged = [...remote];
+  for (const b of extra) {
+    if (seen.has(b.handle.toLowerCase())) continue;
+    merged.push(b);
+  }
+  return merged;
 }
 
 // -- Load env vars from .env if present (CI scenario) -----------------------
@@ -134,15 +217,18 @@ async function main() {
   const feedPodcastsUrl = process.env.FEED_PODCASTS_URL || FEED_PODCASTS_URL_DEFAULT;
   const feedBlogsUrl    = process.env.FEED_BLOGS_URL    || FEED_BLOGS_URL_DEFAULT;
 
-  const [feedX, feedPodcasts, feedBlogs] = await Promise.all([
+  const [feedX, feedPodcasts, feedBlogs, extraBuilders] = await Promise.all([
     fetchJSON(feedXUrl),
     fetchJSON(feedPodcastsUrl),
-    fetchJSON(feedBlogsUrl)
+    fetchJSON(feedBlogsUrl),
+    loadExtraBuilders()
   ]);
 
   if (!feedX)        errors.push('Could not fetch tweet feed');
   if (!feedPodcasts) errors.push('Could not fetch podcast feed');
   if (!feedBlogs)    errors.push('Could not fetch blog feed');
+
+  const mergedX = mergeBuilders(feedX?.x || [], extraBuilders);
 
   // 2a. Filter every source to the last 24 hours — the feeds ship much older
   // items (podcasts use a 14-day lookback, blogs use 72h), so we re-filter
@@ -159,7 +245,7 @@ async function main() {
   const recentPodcasts = (feedPodcasts?.podcasts || [])
     .filter(p => isRecent(p.publishedAt || p.pubDate || p.date));
 
-  const recentX = (feedX?.x || [])
+  const recentX = mergedX
     .map(b => ({
       ...b,
       tweets: (b.tweets || []).filter(t => isRecent(t.createdAt || t.created_at || t.date))
