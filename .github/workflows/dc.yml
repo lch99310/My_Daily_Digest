@@ -40,10 +40,11 @@ jobs:
       # ------------------------------------------------------------------
       - name: Generate and deliver data center briefing
         env:
-          OPENROUTER_FREE_API_KEY:  ${{ secrets.OPENROUTER_FREE_API_KEY }}
-          DEEPSEEK_API_KEY:         ${{ secrets.DEEPSEEK_API_KEY }}
-          DC_TELEGRAM_BOT_TOKEN:    ${{ secrets.DC_TELEGRAM_BOT_TOKEN }}
-          DC_TELEGRAM_CHAT_ID:      ${{ secrets.DC_TELEGRAM_CHAT_ID }}
+          OPENROUTER_FREE_API_KEY:       ${{ secrets.OPENROUTER_FREE_API_KEY }}
+          DEEPSEEK_API_KEY:              ${{ secrets.DEEPSEEK_API_KEY }}
+          DC_TELEGRAM_BOT_TOKEN:         ${{ secrets.DC_TELEGRAM_BOT_TOKEN }}
+          DC_TELEGRAM_CHAT_ID:           ${{ secrets.DC_TELEGRAM_CHAT_ID }}
+          DC_TELEGRAM_CHANNEL_CHAT_ID:   ${{ secrets.DC_TELEGRAM_CHANNEL_CHAT_ID }}
         run: node scripts/dc-digest.mjs
 
       # ------------------------------------------------------------------

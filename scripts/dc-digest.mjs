@@ -11,10 +11,14 @@ const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
 const DEEPSEEK_API_KEY       = process.env.DEEPSEEK_API_KEY || '';
 const BOT_TOKEN          = process.env.DC_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID            = process.env.DC_TELEGRAM_CHAT_ID || '';
+const CHANNEL_CHAT_ID    = process.env.DC_TELEGRAM_CHANNEL_CHAT_ID || '';
 
 if (!OPENROUTER_FREE_API_KEY) { console.error('ERROR: OPENROUTER_FREE_API_KEY is required'); process.exit(1); }
 if (!BOT_TOKEN)          { console.error('ERROR: DC_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
-if (!CHAT_ID)            { console.error('ERROR: DC_TELEGRAM_CHAT_ID is required'); process.exit(1); }
+if (!CHAT_ID && !CHANNEL_CHAT_ID) {
+  console.error('ERROR: at least one of DC_TELEGRAM_CHAT_ID / DC_TELEGRAM_CHANNEL_CHAT_ID is required');
+  process.exit(1);
+}
 
 const MAX_TOKENS  = 6000;
 const OUTPUT_FILE = '/tmp/dc-briefing.md';
@@ -444,18 +448,41 @@ async function sendTelegram(text) {
     remaining = remaining.slice(splitAt).trimStart();
   }
 
-  for (let i = 0; i < chunks.length; i++) {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: chunks[i] }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Telegram API error: ${err}`);
+  // Fan out to every configured destination (private chat + channel).
+  // One destination failing must not block the others, so we collect errors
+  // and only throw at the end if every destination failed.
+  const destinations = [
+    { label: 'chat',    chatId: CHAT_ID },
+    { label: 'channel', chatId: CHANNEL_CHAT_ID },
+  ].filter(d => d.chatId);
+
+  const errors = [];
+  let   delivered = 0;
+
+  for (const { label, chatId } of destinations) {
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: chunks[i] }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`Telegram API error: ${err}`);
+        }
+        console.log(`[${label}] Sent chunk ${i + 1}/${chunks.length}`);
+      }
+      delivered++;
+    } catch (err) {
+      console.warn(`[${label}] delivery failed: ${err.message}`);
+      errors.push(`${label}: ${err.message}`);
     }
-    console.log(`Sent chunk ${i + 1}/${chunks.length}`);
+  }
+
+  if (delivered === 0) {
+    throw new Error(`All Telegram destinations failed — ${errors.join('; ')}`);
   }
 }
 
