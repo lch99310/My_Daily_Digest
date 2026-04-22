@@ -73,11 +73,10 @@ Go to your repo **Settings → Secrets and variables → Actions** and add:
 | `RESEND_API_KEY` | Optional | For email delivery ([resend.com](https://resend.com/)) |
 | `EMAIL_TO` | Optional | Recipient email address |
 
-Or you can directly follow following Telegram bots for latest daily digest updates.
+Or you can directly join following Telegram channels for latest daily digest updates.
 
-- **Daily Digest for Data Center:** @daily_datacenter_digest_bot
-- **Daily Digest for geopolitics:** @Daily_geopo_briefing_CH_bot
-- **Daily Digest for AI from X(Twotter):** @myaisailydigest_bot
+- **Daily Digest for Data Center:** [@daily_datacenter_digest_bot](https://t.me/+aTaIB7hMwDgyMTg1)
+- **Daily Digest for geopolitics:** [@Daily_geopo_briefing_CH_bot](https://t.me/+hA_68lN-PchkODFl)
 
 ### 3. Run It
 
