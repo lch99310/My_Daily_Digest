@@ -412,7 +412,7 @@ async function callDeepSeek(prompt) {
       'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      model: 'deepseek-v4-flash',
       max_tokens: MAX_TOKENS,
       messages: [{ role: 'user', content: prompt }],
     }),
