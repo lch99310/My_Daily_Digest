@@ -9,22 +9,31 @@ const MAX_ATTEMPTS = 3;
 
 // Retry transient failures (429, 5xx, network) with linear backoff. FRED's
 // stated limit is 120 reqs/min — bursts of 20 in 1s sometimes get throttled.
+// Non-retryable errors (400 = bad request, 401/403 = bad key) fail fast so
+// the caller can move to DBnomics immediately instead of wasting 3 attempts.
 async function fredGet(url, label) {
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res;
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
-      if (res.ok) return res.json();
-      const retryable = res.status === 429 || res.status >= 500;
-      const body = await res.text();
-      lastErr = new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
-      if (!retryable || attempt === MAX_ATTEMPTS) throw lastErr;
-      console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}, retrying…`);
+      res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
     } catch (err) {
+      // Network-level failure (DNS, timeout, reset) — always retryable.
       lastErr = err;
       if (attempt === MAX_ATTEMPTS) throw err;
-      console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} failed: ${err.message}`);
+      console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} network err: ${err.message}`);
+      await new Promise(r => setTimeout(r, 800 * attempt));
+      continue;
     }
+
+    if (res.ok) return res.json();
+
+    const body = await res.text();
+    lastErr = new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable) throw lastErr;
+    if (attempt === MAX_ATTEMPTS) throw lastErr;
+    console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}, retrying…`);
     await new Promise(r => setTimeout(r, 800 * attempt));
   }
   throw lastErr;
@@ -44,7 +53,10 @@ function dbnomicsPeriodToDate(period) {
 }
 
 async function fetchSeriesDBnomics(seriesId, { years = 5 } = {}) {
-  const url = `https://api.db.nomics.world/v22/series/FRED/${encodeURIComponent(seriesId)}?observations=1`;
+  // DBnomics organizes each FRED series as its own dataset, so the canonical
+  // URL is /series/FRED/{dataset_code}/{series_code} where both are seriesId.
+  // The shortened /series/FRED/{seriesId} form returns 404.
+  const url = `https://api.db.nomics.world/v22/series/FRED/${encodeURIComponent(seriesId)}/${encodeURIComponent(seriesId)}?observations=1`;
   const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
   if (!res.ok) throw new Error(`DBnomics HTTP ${res.status}`);
   const data = await res.json();

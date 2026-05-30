@@ -137,11 +137,16 @@
     }
   ],
   "capex": [
-    { "company": "Alphabet (GOOGL)", "cik": "0001652044", "isPrivate": false },
-    { "company": "Meta (META)",      "cik": "0001326801", "isPrivate": false },
-    { "company": "Microsoft (MSFT)", "cik": "0000789019", "isPrivate": false },
-    { "company": "Amazon (AMZN)",    "cik": "0001018724", "isPrivate": false, "note": "全公司 capex；AWS 拆分需讀 segment 註腳" },
-    { "company": "SpaceXAI",          "cik": "0001181412", "isPrivate": false, "note": "SpaceX × xAI 合併實體；S-1 招股書 (2026)" },
+    { "company": "Microsoft", "cik": "0000789019", "isPrivate": false },
+    { "company": "Alphabet",  "cik": "0001652044", "isPrivate": false },
+    { "company": "Meta",      "cik": "0001326801", "isPrivate": false },
+    { "company": "Amazon",    "cik": "0001018724", "isPrivate": false, "note": "全公司 capex；AWS 拆分需讀 segment 註腳" },
+    {
+      "company": "SpaceXAI",
+      "cik": "0001181412",
+      "isPrivate": true,
+      "estimatedCapex": { "valueUSD": 4200000000, "period": "Y25E", "source": "S-1 招股書 (XBRL 尚未處理完成)" }
+    },
     {
       "company": "OpenAI",
       "cik": null,

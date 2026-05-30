@@ -66,11 +66,13 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// CJK width-aware padding for capex table.
-const CJK_RE = /[　-鿿＀-￯]/;
+// Visual width = 2 cols for CJK ideographs, punctuation, full-width forms,
+// common pictographs, and emoji (which Telegram renders at 2× width in
+// monospace blocks). Everything else = 1 col.
+const WIDE_RE = /[☀-➿　-〿㐀-鿿＀-￯\u{1F300}-\u{1FAFF}]/u;
 function visualWidth(s) {
   let w = 0;
-  for (const ch of String(s)) w += (CJK_RE.test(ch) ? 2 : 1);
+  for (const ch of String(s)) w += (WIDE_RE.test(ch) ? 2 : 1);
   return w;
 }
 function padTo(s, width, align = 'left') {
@@ -131,14 +133,29 @@ async function fetchWithRetry(url, opts, { label, attempts = 3 } = {}) {
   return null;
 }
 
-async function sendMessage(text, parseMode) {
+// previewUrl (Bot API 7.0+): when set, Telegram renders a preview of that URL
+// BELOW the message text in the same bubble (show_above_text: false).
+// We use this to put chart photos beneath each indicator card without sending
+// two messages.
+async function sendMessage(text, parseMode, previewUrl) {
   for (const { label, chatId } of DESTINATIONS) {
+    const body = { chat_id: chatId, text, parse_mode: parseMode };
+    if (previewUrl) {
+      body.link_preview_options = {
+        is_disabled: false,
+        url: previewUrl,
+        show_above_text: false,
+        prefer_large_media: true,
+      };
+    } else {
+      body.disable_web_page_preview = true;
+    }
     const res = await fetchWithRetry(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(15_000),
       },
       { label },
@@ -183,28 +200,21 @@ async function sendPhoto(photoUrl, caption, parseMode) {
   }
 }
 
-// Combine card text into the chart photo's caption so they appear in one
-// Telegram bubble (image on top, formatted card text below). Falls back to
-// sendMessage-only when no chart is available or caption exceeds 1024 chars.
+// Send the card text with the chart attached as a *link preview* below the
+// text. Single bubble, text on top, chart image on bottom — which is the
+// natural reading order (sendPhoto + caption would put image first).
+// QuickChart short URLs (image/png) generate Telegram previews reliably.
 async function sendCardWithChart({ card, series, color, yUnit, captionLabel }) {
-  if (!series || series.length === 0) {
-    await sendMessage(card, 'HTML');
-    return;
+  let previewUrl = null;
+  if (series && series.length > 0) {
+    const longUrl = buildSparklineUrl(series, { label: captionLabel, color, yUnit });
+    if (longUrl) {
+      // Always shorten so the URL is small + cacheable by Telegram's preview
+      // fetcher; long URLs (>3.5KB) often fail preview generation entirely.
+      previewUrl = await shortenChartUrl(longUrl);
+    }
   }
-  const longUrl = buildSparklineUrl(series, { label: captionLabel, color, yUnit });
-  if (!longUrl) {
-    await sendMessage(card, 'HTML');
-    return;
-  }
-  const url = longUrl.length > 3500 ? await shortenChartUrl(longUrl) : longUrl;
-
-  if (card.length <= CAPTION_MAX) {
-    await sendPhoto(url, card, 'HTML');
-  } else {
-    // Caption too long — degrade to two messages so nothing gets truncated.
-    await sendMessage(card, 'HTML');
-    await sendPhoto(url, captionLabel);
-  }
+  await sendMessage(card, 'HTML', previewUrl);
 }
 
 // -- Buffett indicator: market cap (NCBEILQ027S, $B) ÷ GDP ($B) -----------
@@ -235,30 +245,32 @@ async function computeBuffett(cfg) {
 // -- Capex table renderer --------------------------------------------------
 
 function renderCapexTable(rows) {
-  // Sort by capex value desc; private/failed rows go to the bottom.
+  // Sort by capex value desc; failed rows sink to the bottom.
   const sorted = [...rows].sort((a, b) => {
     const av = Number.isFinite(a.sortValue) ? a.sortValue : -Infinity;
     const bv = Number.isFinite(b.sortValue) ? b.sortValue : -Infinity;
     return bv - av;
   });
 
-  const headers = ['公司', '最新 Capex', '對比', '期間'];
+  // Short headers + single-space gaps to keep total width <= ~33 chars so the
+  // <pre> block doesn't wrap on narrow mobile chat widths.
+  const headers = ['公司', 'Capex', '變動', '期間'];
   const cols = ['name', 'value', 'delta', 'period'];
   const widths = headers.map((h, i) => Math.max(
     visualWidth(h),
     ...sorted.map(r => visualWidth(String(r[cols[i]] || '—'))),
   ));
 
-  const sep = widths.map(w => '─'.repeat(w)).join('  ');
+  const sep = widths.map(w => '─'.repeat(w)).join(' ');
   const lines = [
-    headers.map((h, i) => padTo(h, widths[i])).join('  '),
+    headers.map((h, i) => padTo(h, widths[i])).join(' '),
     sep,
     ...sorted.map(r => [
       padTo(r.name || '—',   widths[0]),
       padTo(r.value || '—',  widths[1], 'right'),
       padTo(r.delta || '—',  widths[2], 'right'),
       padTo(r.period || '—', widths[3]),
-    ].join('  ')),
+    ].join(' ')),
   ];
   return lines.join('\n');
 }
@@ -464,12 +476,7 @@ async function main() {
     }
   }
 
-  if (capexChartUrl && capexMsg.length <= CAPTION_MAX) {
-    await sendPhoto(capexChartUrl, capexMsg, 'HTML');
-  } else {
-    await sendMessage(capexMsg, 'HTML');
-    if (capexChartUrl) await sendPhoto(capexChartUrl, 'AI Capex 趨勢 — 近 6 期 ($B)');
-  }
+  await sendMessage(capexMsg, 'HTML', capexChartUrl);
 
   // -- Artifact ----------------------------------------------------------
   const briefing = [
