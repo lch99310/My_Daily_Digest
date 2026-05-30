@@ -154,14 +154,20 @@ async function sendMessage(text, parseMode) {
   }
 }
 
-async function sendPhoto(photoUrl, caption) {
+// Telegram caption max length when parse_mode is HTML/MarkdownV2.
+const CAPTION_MAX = 1024;
+
+async function sendPhoto(photoUrl, caption, parseMode) {
   for (const { label, chatId } of DESTINATIONS) {
+    const body = { chat_id: chatId, photo: photoUrl };
+    if (caption) body.caption = caption;
+    if (parseMode) body.parse_mode = parseMode;
     const res = await fetchWithRetry(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, photo: photoUrl, caption }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(20_000),
       },
       { label },
@@ -177,13 +183,28 @@ async function sendPhoto(photoUrl, caption) {
   }
 }
 
+// Combine card text into the chart photo's caption so they appear in one
+// Telegram bubble (image on top, formatted card text below). Falls back to
+// sendMessage-only when no chart is available or caption exceeds 1024 chars.
 async function sendCardWithChart({ card, series, color, yUnit, captionLabel }) {
-  await sendMessage(card, 'HTML');
-  if (!series || series.length === 0) return;
+  if (!series || series.length === 0) {
+    await sendMessage(card, 'HTML');
+    return;
+  }
   const longUrl = buildSparklineUrl(series, { label: captionLabel, color, yUnit });
-  if (!longUrl) return;
+  if (!longUrl) {
+    await sendMessage(card, 'HTML');
+    return;
+  }
   const url = longUrl.length > 3500 ? await shortenChartUrl(longUrl) : longUrl;
-  await sendPhoto(url, captionLabel);
+
+  if (card.length <= CAPTION_MAX) {
+    await sendPhoto(url, card, 'HTML');
+  } else {
+    // Caption too long — degrade to two messages so nothing gets truncated.
+    await sendMessage(card, 'HTML');
+    await sendPhoto(url, captionLabel);
+  }
 }
 
 // -- Buffett indicator: market cap (NCBEILQ027S, $B) ÷ GDP ($B) -----------
@@ -428,9 +449,9 @@ async function main() {
     `💰 <b>AI Capex 追蹤</b>\n資料：SEC EDGAR XBRL (上市) + 新聞估算 (未上市，🔒)\n\n` +
     `<pre>${escapeHtml(capexTable)}</pre>` +
     (privateNotes ? `\n\n<i>未上市估算來源</i>\n${escapeHtml(privateNotes)}` : '');
-  await sendMessage(capexMsg, 'HTML');
 
-  // Combined 6-quarter trend chart for all public capex companies.
+  // Build trend chart (one combined line per company, last 6 periods, $B).
+  let capexChartUrl = null;
   if (capexHistorySeries.length > 0) {
     const longUrl = buildMultiSparklineUrl(capexHistorySeries, {
       title: 'AI Capex 趨勢 — 近 6 期 ($B)',
@@ -439,9 +460,15 @@ async function main() {
       height: 340,
     });
     if (longUrl) {
-      const url = longUrl.length > 3500 ? await shortenChartUrl(longUrl) : longUrl;
-      await sendPhoto(url, 'AI Capex 趨勢 — 近 6 期 ($B)');
+      capexChartUrl = longUrl.length > 3500 ? await shortenChartUrl(longUrl) : longUrl;
     }
+  }
+
+  if (capexChartUrl && capexMsg.length <= CAPTION_MAX) {
+    await sendPhoto(capexChartUrl, capexMsg, 'HTML');
+  } else {
+    await sendMessage(capexMsg, 'HTML');
+    if (capexChartUrl) await sendPhoto(capexChartUrl, 'AI Capex 趨勢 — 近 6 期 ($B)');
   }
 
   // -- Artifact ----------------------------------------------------------

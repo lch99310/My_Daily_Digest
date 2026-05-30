@@ -1,5 +1,8 @@
-// FRED (St. Louis Fed) API client. Requires FRED_API_KEY env var (free).
-// https://fred.stlouisfed.org/docs/api/fred/series_observations.html
+// FRED (St. Louis Fed) API client with DBnomics fallback.
+// FRED requires FRED_API_KEY env var (free); DBnomics is keyless and mirrors
+// the FRED catalogue at `FRED/{seriesId}` — used automatically when FRED
+// itself is rate-limiting or returning a transient error.
+// Docs: https://fred.stlouisfed.org/docs/api/  |  https://api.db.nomics.world/
 
 const TIMEOUT = 12_000;
 const MAX_ATTEMPTS = 3;
@@ -27,29 +30,77 @@ async function fredGet(url, label) {
   throw lastErr;
 }
 
+// DBnomics period formats vary by frequency: "YYYY" / "YYYY-QX" / "YYYY-MM"
+// / "YYYY-MM-DD". Normalize all to YYYY-MM-DD (period-end semantics).
+function dbnomicsPeriodToDate(period) {
+  if (/^\d{4}$/.test(period)) return `${period}-12-31`;
+  if (/^\d{4}-Q[1-4]$/.test(period)) {
+    const [yr, q] = period.split('-');
+    const end = { Q1: '03-31', Q2: '06-30', Q3: '09-30', Q4: '12-31' }[q];
+    return `${yr}-${end}`;
+  }
+  if (/^\d{4}-\d{2}$/.test(period)) return `${period}-01`;
+  return period;
+}
+
+async function fetchSeriesDBnomics(seriesId, { years = 5 } = {}) {
+  const url = `https://api.db.nomics.world/v22/series/FRED/${encodeURIComponent(seriesId)}?observations=1`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
+  if (!res.ok) throw new Error(`DBnomics HTTP ${res.status}`);
+  const data = await res.json();
+  const doc = data.series?.docs?.[0];
+  if (!doc) throw new Error('DBnomics returned no series doc');
+
+  const periods = doc.period || [];
+  const values  = doc.value  || [];
+  const cutoff  = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - years);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+  const out = [];
+  for (let i = 0; i < periods.length; i++) {
+    const v = values[i];
+    if (v === 'NA' || v == null) continue;
+    const num = Number(v);
+    if (!Number.isFinite(num)) continue;
+    const date = dbnomicsPeriodToDate(periods[i]);
+    if (date < cutoffStr) continue;
+    out.push({ date, value: num });
+  }
+  return out;
+}
+
 export async function fetchSeries(seriesId, { years = 5, apiKey } = {}) {
-  if (!apiKey) throw new Error('FRED_API_KEY required');
+  // Try FRED first (more authoritative, has release metadata).
+  if (apiKey) {
+    try {
+      const obsStart = new Date();
+      obsStart.setFullYear(obsStart.getFullYear() - years);
+      const startStr = obsStart.toISOString().slice(0, 10);
 
-  const obsStart = new Date();
-  obsStart.setFullYear(obsStart.getFullYear() - years);
-  const startStr = obsStart.toISOString().slice(0, 10);
+      const url =
+        `https://api.stlouisfed.org/fred/series/observations` +
+        `?series_id=${encodeURIComponent(seriesId)}` +
+        `&api_key=${encodeURIComponent(apiKey)}` +
+        `&file_type=json` +
+        `&observation_start=${startStr}` +
+        `&sort_order=asc`;
+      const data = await fredGet(url, seriesId);
 
-  const url =
-    `https://api.stlouisfed.org/fred/series/observations` +
-    `?series_id=${encodeURIComponent(seriesId)}` +
-    `&api_key=${encodeURIComponent(apiKey)}` +
-    `&file_type=json` +
-    `&observation_start=${startStr}` +
-    `&sort_order=asc`;
+      const obs = (data.observations || [])
+        .filter(o => o.value !== '.' && o.value != null)
+        .map(o => ({ date: o.date, value: Number(o.value) }))
+        .filter(o => Number.isFinite(o.value));
 
-  const data = await fredGet(url, seriesId);
+      if (obs.length > 0) return obs;
+      console.warn(`  FRED ${seriesId} returned 0 rows, trying DBnomics fallback…`);
+    } catch (err) {
+      console.warn(`  FRED ${seriesId} failed (${err.message.slice(0, 80)}), trying DBnomics fallback…`);
+    }
+  }
 
-  const obs = (data.observations || [])
-    .filter(o => o.value !== '.' && o.value != null)
-    .map(o => ({ date: o.date, value: Number(o.value) }))
-    .filter(o => Number.isFinite(o.value));
-
-  return obs;
+  // Fall back to DBnomics — same data, no API key required.
+  return await fetchSeriesDBnomics(seriesId, { years });
 }
 
 // Returns { latest, previous, latestDate, deltaSign }.

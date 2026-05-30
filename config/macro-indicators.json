@@ -146,13 +146,13 @@
       "company": "OpenAI",
       "cik": null,
       "isPrivate": true,
-      "estimatedCapex": { "valueUSD": 8000000000, "period": "FY2025E", "source": "FT / The Information 報導估算" }
+      "estimatedCapex": { "valueUSD": 8000000000, "period": "Y25E", "source": "FT / The Information 報導估算" }
     },
     {
       "company": "Anthropic",
       "cik": null,
       "isPrivate": true,
-      "estimatedCapex": { "valueUSD": 3500000000, "period": "FY2025E", "source": "The Information 報導估算" }
+      "estimatedCapex": { "valueUSD": 3500000000, "period": "Y25E", "source": "The Information 報導估算" }
     }
   ]
 }

@@ -102,9 +102,13 @@ export function formatCapexB(usd) {
   return `$${usd.toFixed(0)}`;
 }
 
-// "2026-03-31" + "Q1" → "26Q1"; "2025-12-31" + "FY" → "25FY".
+// Compact period label, unified across quarterly and annual:
+//   "2026-03-31" + "Q1" → "26Q1"      (quarterly filing)
+//   "2025-12-31" + "FY" → "Y25"        (annual filing, actuals)
+// Private-company estimates supply their own "Y25E" string via config.
 export function shortPeriodLabel(end, fp) {
   if (!end) return fp || '—';
   const yr = end.slice(2, 4);
+  if (fp === 'FY') return `Y${yr}`;
   return `${yr}${fp || ''}`;
 }
