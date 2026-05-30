@@ -1,130 +1,146 @@
 {
-  "_doc": "Weekly macro digest config. FRED for economic series + market index (Wilshire); Yahoo for FX. Buffett indicator computed from Wilshire/GDP. Capex from SEC EDGAR XBRL using CIK.",
+  "_doc": "Weekly macro digest config. One card + one chart per indicator. FRED for economic series + market index; Yahoo for FX. Buffett Indicator computed from FRED WILL5000IND / GDP. Capex from SEC EDGAR XBRL via CIK.",
   "fred": [
     {
       "seriesId": "CPIAUCSL",
       "shortName": "CPI YoY",
       "zhName": "消費者物價指數",
+      "description": "觀察通膨壓力；FED 利率決策核心參考指標。",
       "transform": "yoy",
       "unit": "%",
       "precision": 1,
-      "chart": "inflation"
+      "chart": true,
+      "color": "rgb(54,162,235)"
     },
     {
       "seriesId": "PCEPILFE",
       "shortName": "Core PCE YoY",
-      "zhName": "核心PCE",
+      "zhName": "核心 PCE 物價指數",
+      "description": "剔除食品與能源；FED 偏好的核心通膨指標。",
       "transform": "yoy",
       "unit": "%",
       "precision": 1,
-      "chart": "inflation"
+      "chart": true,
+      "color": "rgb(255,99,132)"
     },
     {
       "seriesId": "UNRATE",
       "shortName": "失業率",
-      "zhName": "失業率",
+      "zhName": "Unemployment Rate",
+      "description": "勞動市場鬆緊；FED 雙重使命之一。",
       "transform": "level",
       "unit": "%",
       "precision": 1,
-      "chart": "labor"
+      "chart": true,
+      "color": "rgb(255,159,64)"
     },
     {
       "seriesId": "PAYEMS",
-      "shortName": "非農新增(千)",
-      "zhName": "非農就業",
+      "shortName": "非農新增就業 (千)",
+      "zhName": "Non-farm Payrolls MoM",
+      "description": "經濟動能即時訊號；與失業率同日發布。",
       "transform": "mom_diff_k",
       "unit": "K",
       "precision": 0,
-      "chart": "labor"
+      "chart": true,
+      "color": "rgb(75,192,192)"
     },
     {
       "seriesId": "DFF",
-      "shortName": "聯邦基金利率",
-      "zhName": "Fed Funds",
+      "shortName": "聯邦基金有效利率",
+      "zhName": "Effective Fed Funds Rate",
+      "description": "FED 政策利率實際成交值；資產定價基準。",
       "transform": "level",
       "unit": "%",
       "precision": 2,
-      "chart": "rates"
+      "chart": true,
+      "color": "rgb(153,102,255)"
     },
     {
       "seriesId": "DGS10",
-      "shortName": "10Y國債殖利率",
-      "zhName": "10Y Treasury",
+      "shortName": "10Y 國債殖利率",
+      "zhName": "10-Year Treasury Yield",
+      "description": "長端利率錨；房貸、企業債定價基準。",
       "transform": "level",
       "unit": "%",
       "precision": 2,
-      "chart": "rates"
+      "chart": true,
+      "color": "rgb(54,162,235)"
     },
     {
       "seriesId": "NAPM",
-      "shortName": "ISM PMI",
-      "zhName": "ISM PMI",
+      "shortName": "ISM 製造業 PMI",
+      "zhName": "ISM Manufacturing PMI",
+      "description": "製造業景氣領先指標；50 為擴張/收縮分水嶺。",
       "transform": "level",
       "unit": "",
       "precision": 1,
-      "chart": null
+      "chart": true,
+      "color": "rgb(255,159,64)"
     },
     {
       "seriesId": "DPCERA3M086SBEA",
-      "shortName": "實質PCE指數",
-      "zhName": "Real PCE",
+      "shortName": "實質 PCE 指數 (YoY)",
+      "zhName": "Real Personal Consumption Expenditures",
+      "description": "美國消費端真實動能；最終銷售動向代理。",
       "transform": "yoy",
       "unit": "%",
       "precision": 1,
-      "chart": null
+      "chart": true,
+      "color": "rgb(75,192,192)"
     },
     {
       "seriesId": "WILL5000IND",
-      "shortName": "Wilshire 5000",
-      "zhName": "Wilshire 5K",
+      "shortName": "Wilshire 5000 全市場",
+      "zhName": "Wilshire 5000 Total Market Index",
+      "description": "美股總市值代理；Buffett Indicator 分子。",
       "transform": "level",
       "unit": "",
       "precision": 2,
-      "chart": "valuation"
+      "chart": true,
+      "color": "rgb(255,99,132)"
     }
   ],
   "fx": [
     {
       "symbol": "DX-Y.NYB",
       "shortName": "美元指數 DXY",
-      "zhName": "DXY",
+      "zhName": "US Dollar Index",
+      "description": "美元對六大主要貨幣加權；全球風險情緒與資金流向指標。",
       "unit": "",
       "precision": 2,
-      "chart": "fx"
+      "chart": true,
+      "color": "rgb(54,162,235)"
     },
     {
       "symbol": "JPY=X",
       "shortName": "USD/JPY",
-      "zhName": "USD/JPY",
+      "zhName": "美元/日圓",
+      "description": "全球套利交易核心；日銀政策與美日利差晴雨表。",
       "unit": "",
       "precision": 2,
-      "chart": "fx"
+      "chart": true,
+      "color": "rgb(255,99,132)"
     }
   ],
   "computed": [
     {
       "id": "buffett",
-      "shortName": "巴菲特指標",
-      "zhName": "Buffett Indicator",
-      "formula": "WILL5000IND / GDP",
+      "shortName": "Buffett Indicator",
+      "zhName": "巴菲特指標",
+      "description": "Wilshire 5000 Full Cap Index ÷ 美國名目 GDP；歷史均值約 0.8-1.0，>1.5 視為偏高估值。",
       "unit": "x",
       "precision": 2,
-      "note": "Wilshire 5000 Full Cap Index ÷ 美國名目 GDP；歷史均值約 0.8-1.0，>1.5 視為偏高"
+      "chart": true,
+      "color": "rgb(153,102,255)"
     }
   ],
   "capex": [
     { "company": "Alphabet (GOOGL)", "cik": "0001652044", "isPrivate": false },
     { "company": "Meta (META)",      "cik": "0001326801", "isPrivate": false },
     { "company": "Microsoft (MSFT)", "cik": "0000789019", "isPrivate": false },
-    { "company": "Amazon AWS",       "cik": "0001018724", "isPrivate": false, "note": "全公司 capex；AWS 拆分需讀 segment 註腳" },
-    { "company": "SpaceX",           "cik": null,          "isPrivate": true,  "note": "Pre-IPO；依賴新聞估算" },
+    { "company": "Amazon (AMZN)",    "cik": "0001018724", "isPrivate": false, "note": "全公司 capex；AWS 拆分需讀 segment 註腳" },
+    { "company": "SpaceX",           "cik": null,          "isPrivate": true,  "note": "Pre-IPO；待新聞估算" },
     { "company": "xAI",              "cik": null,          "isPrivate": true,  "note": "Pre-IPO；Colossus 叢集擴建估算" }
-  ],
-  "chartGroups": [
-    { "id": "inflation", "title": "通膨：CPI vs Core PCE (YoY)", "yUnit": "%" },
-    { "id": "labor",     "title": "勞動：失業率 vs 非農新增 (千人)", "yUnit": "" },
-    { "id": "rates",     "title": "利率：Fed Funds vs 10Y Treasury", "yUnit": "%" },
-    { "id": "fx",        "title": "匯率：DXY vs USD/JPY", "yUnit": "" },
-    { "id": "valuation", "title": "估值：Wilshire 5000 + Buffett Indicator", "yUnit": "" }
   ]
 }
