@@ -3,7 +3,8 @@
 // Weekly Macro Indicators Digest — macro-digest.mjs
 // One Telegram card per indicator (FRED + FX + computed Buffett), each
 // followed by a single-indicator QuickChart line photo. Closes with an
-// SEC EDGAR XBRL-sourced AI capex table.
+// AI capex table sourced from SEC EDGAR XBRL + manual estimates for
+// pre-IPO entities (OpenAI / Anthropic).
 // ============================================================================
 
 import { readFile, writeFile } from 'fs/promises';
@@ -39,7 +40,7 @@ function applyTransform(obs, transform) {
     return obs.map((o, i) => {
       const prev = obs[i - 1];
       if (!prev) return null;
-      return { date: o.date, value: o.value - prev.value };  // PAYEMS already in thousands
+      return { date: o.date, value: o.value - prev.value };
     }).filter(Boolean);
   }
   return obs;
@@ -65,9 +66,19 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// CJK width-aware padding for capex table.
+const CJK_RE = /[　-鿿＀-￯]/;
+function visualWidth(s) {
+  let w = 0;
+  for (const ch of String(s)) w += (CJK_RE.test(ch) ? 2 : 1);
+  return w;
+}
+function padTo(s, width, align = 'left') {
+  const pad = Math.max(0, width - visualWidth(s));
+  return align === 'right' ? ' '.repeat(pad) + s : s + ' '.repeat(pad);
+}
+
 // -- Card renderer ----------------------------------------------------------
-// Telegram HTML mode supports <b> / <i>; we use bold for title and the
-// current value to draw the eye to what matters most.
 
 function renderCard({ shortName, zhName, description, summary, nextRelease, unit, precision, dataLabel = '數據日期' }) {
   const latestStr = fmt(summary.latest, unit, precision);
@@ -84,39 +95,68 @@ function renderCard({ shortName, zhName, description, summary, nextRelease, unit
   ].join('\n');
 }
 
-// -- Telegram delivery ------------------------------------------------------
+// -- Telegram delivery (with retry) ----------------------------------------
 
 const DESTINATIONS = [
   { label: 'chat',    chatId: CHAT_ID },
   { label: 'channel', chatId: CHANNEL_CHAT_ID },
 ].filter(d => d.chatId);
 
+async function fetchWithRetry(url, opts, { label, attempts = 3 } = {}) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const res = await fetch(url, opts);
+      return res;
+    } catch (err) {
+      console.warn(`[${label}] fetch attempt ${i}/${attempts} failed: ${err.message}`);
+      if (i < attempts) await new Promise(r => setTimeout(r, 1500 * i));
+    }
+  }
+  return null;
+}
+
 async function sendMessage(text, parseMode) {
   for (const { label, chatId } of DESTINATIONS) {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true }),
-      signal: AbortSignal.timeout(15_000),
-    });
+    const res = await fetchWithRetry(
+      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true }),
+        signal: AbortSignal.timeout(15_000),
+      },
+      { label },
+    );
+    if (!res) {
+      console.warn(`[${label}] sendMessage gave up after retries`);
+      continue;
+    }
     if (!res.ok) {
       const err = await res.text();
-      console.warn(`[${label}] sendMessage failed: ${err.slice(0, 300)}`);
+      console.warn(`[${label}] sendMessage HTTP ${res.status}: ${err.slice(0, 300)}`);
     }
   }
 }
 
 async function sendPhoto(photoUrl, caption) {
   for (const { label, chatId } of DESTINATIONS) {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, photo: photoUrl, caption }),
-      signal: AbortSignal.timeout(20_000),
-    });
+    const res = await fetchWithRetry(
+      `https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, photo: photoUrl, caption }),
+        signal: AbortSignal.timeout(20_000),
+      },
+      { label },
+    );
+    if (!res) {
+      console.warn(`[${label}] sendPhoto gave up after retries`);
+      continue;
+    }
     if (!res.ok) {
       const err = await res.text();
-      console.warn(`[${label}] sendPhoto failed: ${err.slice(0, 300)}`);
+      console.warn(`[${label}] sendPhoto HTTP ${res.status}: ${err.slice(0, 300)}`);
     }
   }
 }
@@ -128,6 +168,62 @@ async function sendCardWithChart({ card, series, color, yUnit, captionLabel }) {
   if (!longUrl) return;
   const url = longUrl.length > 3500 ? await shortenChartUrl(longUrl) : longUrl;
   await sendPhoto(url, captionLabel);
+}
+
+// -- Buffett indicator: market cap (NCBEILQ027S, $B) ÷ GDP ($B) -----------
+
+async function computeBuffett(cfg) {
+  try {
+    const [num, den] = await Promise.all([
+      fetchSeries(cfg.numeratorSeriesId, { years: 5, apiKey: FRED_API_KEY }),
+      fetchSeries(cfg.denominatorSeriesId, { years: 5, apiKey: FRED_API_KEY }),
+    ]);
+    if (!num.length || !den.length) return null;
+
+    // Both quarterly — align by date prefix (YYYY-MM).
+    const denByMonth = new Map(den.map(d => [d.date.slice(0, 7), d.value]));
+    const series = num.map(n => {
+      const v = denByMonth.get(n.date.slice(0, 7));
+      if (!Number.isFinite(v) || v === 0) return null;
+      return { date: n.date, value: n.value / v };
+    }).filter(Boolean);
+
+    return { series, summary: summarizeSeries(series) };
+  } catch (err) {
+    console.warn(`  Buffett compute failed: ${err.message}`);
+    return null;
+  }
+}
+
+// -- Capex table renderer --------------------------------------------------
+
+function renderCapexTable(rows) {
+  // Sort by capex value desc; private/failed rows go to the bottom.
+  const sorted = [...rows].sort((a, b) => {
+    const av = Number.isFinite(a.sortValue) ? a.sortValue : -Infinity;
+    const bv = Number.isFinite(b.sortValue) ? b.sortValue : -Infinity;
+    return bv - av;
+  });
+
+  const headers = ['公司', '最新 Capex', '對比', '期間'];
+  const cols = ['name', 'value', 'delta', 'period'];
+  const widths = headers.map((h, i) => Math.max(
+    visualWidth(h),
+    ...sorted.map(r => visualWidth(String(r[cols[i]] || '—'))),
+  ));
+
+  const sep = widths.map(w => '─'.repeat(w)).join('  ');
+  const lines = [
+    headers.map((h, i) => padTo(h, widths[i])).join('  '),
+    sep,
+    ...sorted.map(r => [
+      padTo(r.name || '—',   widths[0]),
+      padTo(r.value || '—',  widths[1], 'right'),
+      padTo(r.delta || '—',  widths[2], 'right'),
+      padTo(r.period || '—', widths[3]),
+    ].join('  ')),
+  ];
+  return lines.join('\n');
 }
 
 // -- Main -------------------------------------------------------------------
@@ -155,7 +251,7 @@ async function main() {
     return { cfg, series, summary, nextRelease };
   });
 
-  console.log(`Fetching ${config.fx.length} Yahoo FX series...`);
+  console.log(`Fetching ${config.fx.length} Yahoo FX/index series...`);
   const fxResults = await Promise.allSettled(
     config.fx.map(cfg => fetchHistory(cfg.symbol, { range: '5y', interval: '1mo' })),
   );
@@ -166,23 +262,9 @@ async function main() {
     return { cfg, series, summary: summarizeSeries(series) };
   });
 
-  console.log('Computing Buffett indicator (WILL5000IND / GDP)...');
-  const wilshire = fredEntries.find(e => e.cfg.seriesId === 'WILL5000IND');
-  let buffett = null;
-  if (wilshire?.series?.length > 0) {
-    try {
-      const gdp = await fetchSeries('GDP', { years: 5, apiKey: FRED_API_KEY });
-      const ratioSeries = [];
-      for (const w of wilshire.series) {
-        const matchingGdp = [...gdp].reverse().find(g => g.date <= w.date);
-        if (!matchingGdp || matchingGdp.value === 0) continue;
-        ratioSeries.push({ date: w.date, value: w.value / matchingGdp.value });
-      }
-      buffett = { series: ratioSeries, summary: summarizeSeries(ratioSeries) };
-    } catch (err) {
-      console.warn(`  Buffett compute failed: ${err.message}`);
-    }
-  }
+  console.log('Computing Buffett indicator (NCBEILQ027S / GDP)...');
+  const buffettCfg = config.computed.find(c => c.id === 'buffett');
+  const buffett = await computeBuffett(buffettCfg);
 
   // -- Header ------------------------------------------------------------
   const today = new Date().toLocaleDateString('zh-TW', {
@@ -194,17 +276,18 @@ async function main() {
   for (const entry of fredEntries) {
     const { cfg, series, summary, nextRelease, error } = entry;
     if (error) {
-      await sendMessage(`🔹 <b>${escapeHtml(cfg.shortName)}</b> — ${escapeHtml(cfg.zhName)}\n${escapeHtml(cfg.description || '')}\n\n⚠️ FRED 抓取失敗`, 'HTML');
+      await sendMessage(
+        `🔹 <b>${escapeHtml(cfg.shortName)}</b> — ${escapeHtml(cfg.zhName)}\n${escapeHtml(cfg.description || '')}\n\n⚠️ FRED 抓取失敗`,
+        'HTML',
+      );
       continue;
     }
     const card = renderCard({
       shortName: cfg.shortName,
       zhName: cfg.zhName,
       description: cfg.description || '',
-      summary,
-      nextRelease,
-      unit: cfg.unit,
-      precision: cfg.precision,
+      summary, nextRelease,
+      unit: cfg.unit, precision: cfg.precision,
     });
     await sendCardWithChart({
       card,
@@ -215,7 +298,7 @@ async function main() {
     });
   }
 
-  // -- FX cards ----------------------------------------------------------
+  // -- FX / index cards --------------------------------------------------
   for (const entry of fxEntries) {
     const { cfg, series, summary } = entry;
     const card = renderCard({
@@ -239,67 +322,93 @@ async function main() {
 
   // -- Buffett card ------------------------------------------------------
   if (buffett) {
-    const cfg = config.computed.find(c => c.id === 'buffett');
     const card = renderCard({
-      shortName: cfg.shortName,
-      zhName: cfg.zhName,
-      description: cfg.description,
+      shortName: buffettCfg.shortName,
+      zhName: buffettCfg.zhName,
+      description: buffettCfg.description,
       summary: buffett.summary,
-      nextRelease: '隨 Wilshire 5000 日頻更新；GDP 每季修正',
-      unit: cfg.unit,
-      precision: cfg.precision,
+      nextRelease: '每季 Flow of Funds 與 GDP 更新時同步',
+      unit: buffettCfg.unit,
+      precision: buffettCfg.precision,
       dataLabel: '計算日期',
     });
     await sendCardWithChart({
       card,
       series: buffett.series,
-      color: cfg.color,
-      yUnit: cfg.unit,
-      captionLabel: `${cfg.shortName} — 近 5 年`,
+      color: buffettCfg.color,
+      yUnit: buffettCfg.unit,
+      captionLabel: `${buffettCfg.shortName} — 近 5 年`,
     });
+  } else {
+    await sendMessage(`🔹 <b>${escapeHtml(buffettCfg.shortName)}</b> — ${escapeHtml(buffettCfg.zhName)}\n\n⚠️ FRED 抓取失敗`, 'HTML');
   }
 
-  // -- AI Capex section --------------------------------------------------
-  console.log('Fetching AI capex from SEC EDGAR...');
-  const publicCapex = config.capex.filter(c => !c.isPrivate && c.cik);
+  // -- AI Capex table ----------------------------------------------------
+  console.log('Fetching AI capex from SEC EDGAR + manual estimates...');
+  const publicEntries = config.capex.filter(c => !c.isPrivate && c.cik);
   const capexResults = await Promise.allSettled(
-    publicCapex.map(c => fetchLatestQuarterlyCapex(c.cik)),
+    publicEntries.map(c => fetchLatestQuarterlyCapex(c.cik)),
   );
 
-  const capexLines = [];
-  for (let i = 0; i < publicCapex.length; i++) {
-    const cfg = publicCapex[i];
+  const capexRows = [];
+  for (let i = 0; i < publicEntries.length; i++) {
+    const cfg = publicEntries[i];
     const r = capexResults[i];
     if (r.status !== 'fulfilled' || !r.value) {
-      capexLines.push(`• ${escapeHtml(cfg.company)}　<i>抓取失敗</i>`);
+      capexRows.push({ name: cfg.company, value: '—', delta: '—', period: '抓取失敗', sortValue: NaN });
       continue;
     }
     const v = r.value;
     const deltaPct = (Number.isFinite(v.previousValue) && v.previousValue !== 0)
       ? ((v.value - v.previousValue) / v.previousValue) * 100
       : null;
-    const deltaStr = deltaPct == null ? '—' : `${deltaPct >= 0 ? '↑' : '↓'} ${Math.abs(deltaPct).toFixed(0)}% vs 上一季`;
-    capexLines.push(
-      `• <b>${escapeHtml(cfg.company)}</b>　${formatCapexB(v.value)}  (${escapeHtml(deltaStr)})\n　${escapeHtml(v.end)} ${escapeHtml(v.fp)} 10-Q`
-      + (cfg.note ? `\n　<i>${escapeHtml(cfg.note)}</i>` : '')
-    );
+    const deltaStr = deltaPct == null ? '—' : `${deltaPct >= 0 ? '↑' : '↓'}${Math.abs(deltaPct).toFixed(0)}%`;
+    capexRows.push({
+      name:      cfg.company,
+      value:     formatCapexB(v.value),
+      delta:     deltaStr,
+      period:    `${v.end} ${v.fp} (${v.form})`,
+      sortValue: v.value,
+    });
   }
   for (const c of config.capex.filter(c => c.isPrivate)) {
-    capexLines.push(`• <b>${escapeHtml(c.company)}</b>　🔒 Pre-IPO\n　<i>${escapeHtml(c.note || '依新聞估算')}</i>`);
+    const est = c.estimatedCapex;
+    if (est && Number.isFinite(est.valueUSD)) {
+      capexRows.push({
+        name:      `${c.company} 🔒`,
+        value:     formatCapexB(est.valueUSD),
+        delta:     '估算',
+        period:    est.period,
+        sortValue: est.valueUSD,
+      });
+    } else {
+      capexRows.push({ name: `${c.company} 🔒`, value: '—', delta: '—', period: '待估算', sortValue: NaN });
+    }
   }
 
-  const capexMsg = `💰 <b>AI Capex 追蹤 (最新 10-Q)</b>\n資料：SEC EDGAR XBRL\n\n${capexLines.join('\n\n')}`;
+  const capexTable = renderCapexTable(capexRows);
+  const privateNotes = config.capex
+    .filter(c => c.isPrivate && c.estimatedCapex)
+    .map(c => `• ${c.company}：${c.estimatedCapex.source}`)
+    .join('\n');
+  const capexMsg =
+    `💰 <b>AI Capex 追蹤</b>\n資料：SEC EDGAR XBRL (上市) + 新聞估算 (未上市，🔒)\n\n` +
+    `<pre>${escapeHtml(capexTable)}</pre>` +
+    (privateNotes ? `\n\n<i>未上市估算來源</i>\n${escapeHtml(privateNotes)}` : '');
   await sendMessage(capexMsg, 'HTML');
 
   // -- Artifact ----------------------------------------------------------
   const briefing = [
     `📊 每週總經速報 — ${today}`,
     '',
-    ...fredEntries.map(e => e.error ? `${e.cfg.shortName}: FRED 抓取失敗` : `${e.cfg.shortName}: ${fmt(e.summary.latest, e.cfg.unit, e.cfg.precision)} @ ${e.summary.latestDate} | next: ${e.nextRelease || '—'}`),
-    ...fxEntries.map(e => `${e.cfg.shortName}: ${fmt(e.summary.latest, e.cfg.unit, e.cfg.precision)} @ ${e.summary.latestDate}`),
+    ...fredEntries.map(e => e.error
+      ? `${e.cfg.shortName}: FRED 抓取失敗`
+      : `${e.cfg.shortName}: ${fmt(e.summary.latest, e.cfg.unit, e.cfg.precision)} @ ${e.summary.latestDate} | next: ${e.nextRelease || '—'}`),
+    ...fxEntries.map(e => `${e.cfg.shortName}: ${fmt(e.summary.latest, e.cfg.unit, e.cfg.precision)} @ ${e.summary.latestDate || '—'}`),
     buffett ? `Buffett: ${fmt(buffett.summary.latest, 'x', 2)} @ ${buffett.summary.latestDate}` : 'Buffett: failed',
     '',
-    capexLines.map(l => l.replace(/<[^>]+>/g, '')).join('\n'),
+    'AI Capex:',
+    capexTable,
   ].join('\n');
   await writeFile(OUTPUT_FILE, briefing, 'utf-8');
   console.log(`Briefing written to ${OUTPUT_FILE} (${briefing.length} chars)`);

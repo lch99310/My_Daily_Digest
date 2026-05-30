@@ -1,4 +1,4 @@
-// SEC EDGAR companyconcept API — quarterly capex from XBRL filings.
+// SEC EDGAR companyconcept API — capex from XBRL filings.
 // Free, no API key. SEC requires a descriptive User-Agent.
 // https://www.sec.gov/edgar/sec-api-documentation
 
@@ -9,7 +9,19 @@ const CAPEX_CONCEPTS = [
   'PaymentsToAcquirePropertyPlantAndEquipment',
   'PaymentsForCapitalImprovements',
   'PaymentsToAcquireProductiveAssets',
+  'PaymentsToAcquireMachineryAndEquipment',
 ];
+
+// Forms that legitimately disclose periodic capex via XBRL.
+// 10-Q / 10-K = ongoing US filers. S-1 = IPO prospectus (used by pre-IPO
+// companies like SpaceX whose CIK is registered but no 10-Q exists yet).
+const ACCEPTED_FORMS = new Set([
+  '10-Q', '10-Q/A',
+  '10-K', '10-K/A',
+  '20-F', '20-F/A',
+  'S-1',  'S-1/A',
+  'F-1',  'F-1/A',
+]);
 
 async function getJson(url) {
   const res = await fetch(url, {
@@ -20,8 +32,8 @@ async function getJson(url) {
   return res.json();
 }
 
-// CIK must be 10 digits zero-padded. Returns { value, end, fp, fy, form, source }
-// where value is USD, end is YYYY-MM-DD quarter end, fp is Q1/Q2/Q3.
+// Returns { value, end, fp, fy, form, source, previousValue, previousEnd, periodKind }
+// where periodKind is 'Q' (quarterly) or 'FY' (annual).
 export async function fetchLatestQuarterlyCapex(cik) {
   const padded = String(cik).padStart(10, '0');
 
@@ -30,20 +42,31 @@ export async function fetchLatestQuarterlyCapex(cik) {
       const url = `https://data.sec.gov/api/xbrl/companyconcept/CIK${padded}/us-gaap/${concept}.json`;
       const data = await getJson(url);
       const usd = data.units?.USD || [];
-      // Quarterly entries: 10-Q form, fp = Q1/Q2/Q3. Annual (10-K, FY) skipped.
-      // SEC reports same period multiple times across amendments → dedupe by
-      // `end` keeping highest `filed` (newest filing wins).
+
+      // Dedupe by `end` keeping the newest `filed` (amendments win).
       const byEnd = new Map();
       for (const u of usd) {
-        if (!u.fp || !u.fp.startsWith('Q')) continue;
-        if (!['10-Q', '10-Q/A'].includes(u.form)) continue;
-        const prev = byEnd.get(u.end);
-        if (!prev || u.filed > prev.filed) byEnd.set(u.end, u);
+        if (!u.fp) continue;
+        if (!ACCEPTED_FORMS.has(u.form)) continue;
+        const isQ  = u.fp.startsWith('Q');
+        const isFY = u.fp === 'FY';
+        if (!isQ && !isFY) continue;
+        const key = `${u.end}|${isQ ? 'Q' : 'FY'}`;
+        const prev = byEnd.get(key);
+        if (!prev || u.filed > prev.filed) byEnd.set(key, { ...u, periodKind: isQ ? 'Q' : 'FY' });
       }
-      const quarterly = [...byEnd.values()].sort((a, b) => b.end.localeCompare(a.end));
-      if (quarterly.length === 0) continue;
-      const latest = quarterly[0];
-      const prev   = quarterly[1];
+
+      // Prefer quarterly; if none, fall back to annual.
+      const quarterly = [...byEnd.values()].filter(u => u.periodKind === 'Q')
+        .sort((a, b) => b.end.localeCompare(a.end));
+      const annual = [...byEnd.values()].filter(u => u.periodKind === 'FY')
+        .sort((a, b) => b.end.localeCompare(a.end));
+
+      const pool = quarterly.length > 0 ? quarterly : annual;
+      if (pool.length === 0) continue;
+
+      const latest = pool[0];
+      const prev   = pool[1];
       return {
         value: latest.val,
         end: latest.end,
@@ -52,6 +75,7 @@ export async function fetchLatestQuarterlyCapex(cik) {
         form: latest.form,
         filed: latest.filed,
         concept,
+        periodKind: latest.periodKind,
         previousValue: prev?.val,
         previousEnd: prev?.end,
       };

@@ -4,7 +4,12 @@
     "equityRiskPremium": 0.06,
     "pegMultiplier": 1.25,
     "horizonYears": 5,
-    "fallbackRiskFree": 0.043
+    "fallbackRiskFree": 0.043,
+    "scenarios": {
+      "base": { "label": "基本情境", "growthMult": 1.0, "betaMult": 1.0 },
+      "bull": { "label": "牛市情境", "growthMult": 1.5, "betaMult": 0.85 },
+      "bear": { "label": "熊市情境", "growthMult": 0.5, "betaMult": 1.20 }
+    }
   },
   "tickers": [
     {
