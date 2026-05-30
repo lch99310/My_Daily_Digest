@@ -49,6 +49,38 @@ export function summarizeSeries(obs) {
   };
 }
 
+// Next scheduled release date for a series, via FRED's release calendar.
+// Returns YYYY-MM-DD string or null if unavailable.
+export async function fetchNextReleaseDate(seriesId, apiKey) {
+  if (!apiKey) return null;
+  try {
+    // Step 1: find the release_id that owns this series.
+    const relUrl = `https://api.stlouisfed.org/fred/series/release?series_id=${encodeURIComponent(seriesId)}&api_key=${encodeURIComponent(apiKey)}&file_type=json`;
+    const relRes = await fetch(relUrl, { signal: AbortSignal.timeout(TIMEOUT) });
+    if (!relRes.ok) throw new Error(`series/release HTTP ${relRes.status}`);
+    const relData = await relRes.json();
+    const releaseId = relData.releases?.[0]?.id;
+    if (!releaseId) return null;
+
+    // Step 2: list future release dates (include "no data yet" entries).
+    const today = new Date().toISOString().slice(0, 10);
+    const datesUrl =
+      `https://api.stlouisfed.org/fred/release/dates` +
+      `?release_id=${releaseId}` +
+      `&realtime_start=${today}` +
+      `&include_release_dates_with_no_data=true` +
+      `&sort_order=asc&limit=3` +
+      `&api_key=${encodeURIComponent(apiKey)}&file_type=json`;
+    const datesRes = await fetch(datesUrl, { signal: AbortSignal.timeout(TIMEOUT) });
+    if (!datesRes.ok) throw new Error(`release/dates HTTP ${datesRes.status}`);
+    const datesData = await datesRes.json();
+    return datesData.release_dates?.[0]?.date || null;
+  } catch (err) {
+    console.warn(`  next-release lookup for ${seriesId} failed: ${err.message}`);
+    return null;
+  }
+}
+
 // Compute YoY % change series from a level series.
 export function toYoYSeries(obs) {
   if (!obs || obs.length < 13) return [];

@@ -13,6 +13,7 @@ import { dirname, resolve } from 'path';
 import { fetchQuotesResilient, fetchFundamentals, fetch10YTreasury } from './lib/yahoo.mjs';
 import { calcFairPriceEPS, calcFairPriceFCF } from './lib/fair-price.mjs';
 import { fetchFeed, dedupeByTitle, filterByAge, sortByDateDesc } from './lib/rss.mjs';
+import { callLLMReliable } from './lib/llm.mjs';
 
 const BOT_TOKEN       = process.env.FINANCE_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID         = process.env.FINANCE_TELEGRAM_CHAT_ID || '';
@@ -27,8 +28,9 @@ if (!CHAT_ID && !CHANNEL_CHAT_ID) {
 const __dirname   = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = resolve(__dirname, '../config/stock-tickers.json');
 const OUTPUT_FILE = '/tmp/stock-briefing.md';
-const NEWS_LOOKBACK_HOURS = 24;
-const NEWS_PER_TICKER     = 3;
+const NEWS_LOOKBACK_HOURS  = 24;
+const NEWS_PER_TICKER_RAW  = 5;   // raw items fed to LLM
+const NEWS_MAX_TICKER_CHARS = 250; // truncate each item before sending to LLM
 
 // -- Data merge: prefer Yahoo live, fall back to config cache ---------------
 
@@ -78,18 +80,25 @@ function money(n) {
   return n.toFixed(2);
 }
 
-function renderCard(ticker, params, fairEps, fairFcf) {
+function renderCard(ticker, params, fairEps, fairFcf, quote) {
   const epsFair = fairEps?.fairToday;
   const fcfFair = fairFcf?.fairToday;
   const epsGap  = Number.isFinite(epsFair) && Number.isFinite(params.price) ? (params.price - epsFair) / epsFair : NaN;
   const fcfGap  = Number.isFinite(fcfFair) && Number.isFinite(params.price) ? (params.price - fcfFair) / fcfFair : NaN;
   const reqReturn = fairEps?.requiredReturn ?? fairFcf?.requiredReturn;
 
+  // Quote epoch → MM-DD label. Yahoo returns regularMarketTime as Unix
+  // seconds; Stooq fills it in too. Fallback to today if missing.
+  let dateLabel = new Date().toISOString().slice(5, 10);
+  if (Number.isFinite(quote?.regularMarketTime)) {
+    dateLabel = new Date(quote.regularMarketTime * 1000).toISOString().slice(5, 10);
+  }
+
   // Vertical layout — avoids CJK monospace alignment headaches on mobile fonts.
   const lines = [
-    `收盤      USD ${money(params.price)}`,
-    `EPS 合理價  USD ${money(epsFair)}  (${pct(epsGap)})`,
-    `FCF 合理價  USD ${money(fcfFair)}  (${pct(fcfGap)})`,
+    `收盤 (${dateLabel})  USD ${money(params.price)}`,
+    `EPS 合理價         USD ${money(epsFair)}  (${pct(epsGap)})`,
+    `FCF 合理價         USD ${money(fcfFair)}  (${pct(fcfGap)})`,
   ];
 
   const meta = `成長 ${pctRaw(params.growth)} · Beta ${num1(params.beta)} · 要求報酬 ${pctRaw(reqReturn)}`;
@@ -107,13 +116,49 @@ function num1(n) {
   return n.toFixed(2);
 }
 
-function renderNewsBlock(items) {
-  if (!items || items.length === 0) return '📰 近 24h 重要新聞: 無';
-  const lines = items.map(it => {
-    const link = it.link ? ` (${it.link})` : '';
-    return `• ${it.title} — ${it.source}${link}`;
-  });
-  return `📰 近 24h 重要新聞:\n${lines.join('\n')}`;
+function renderNewsBlock(summary) {
+  if (!summary) return '📰 近 24h 重要新聞：無';
+  return `📰 近 24h 重要新聞：\n${summary}`;
+}
+
+// Batched LLM news summarization. One call covers all tickers; returns a map
+// of symbol → zh-TW summary string (or null when there's nothing material).
+async function summarizeNewsBatch(tickers, newsBySymbol) {
+  const blocks = [];
+  for (const t of tickers) {
+    const items = newsBySymbol[t.symbol] || [];
+    if (items.length === 0) continue;
+    const lines = items.slice(0, NEWS_PER_TICKER_RAW).map((it, i) =>
+      `${i + 1}. ${it.title}${it.desc ? ' — ' + it.desc.slice(0, NEWS_MAX_TICKER_CHARS) : ''}`,
+    );
+    blocks.push(`## ${t.symbol} — ${t.zhName}\n${lines.join('\n')}`);
+  }
+  if (blocks.length === 0) return {};
+
+  const prompt = `你是台灣財經編輯。閱讀以下各檔個股「近 24 小時」的英文新聞素材，用繁體中文（台灣用語）為每檔寫一段 2-3 句的精簡總結，重點放在對股價/基本面/產業地位的實際影響。冷靜克制、晚點 LatePost 風格，不要套話、不要驚嘆號、不要附連結。
+
+若該股票的新聞都是無關緊要的雜訊（例如純技術線型、analyst 例行升降評），則該股票的值給 null。
+
+# 新聞素材
+
+${blocks.join('\n\n')}
+
+# 輸出格式（嚴格遵守）
+
+回傳純 JSON 物件，鍵為股票代號（大寫），值為繁體中文總結字串或 null。不要任何 markdown 程式區塊、不要額外文字，只回傳 JSON 本身。範例：
+
+{"NVDA": "公司...影響...", "AMD": null}`;
+
+  try {
+    const raw = await callLLMReliable(prompt, { maxTokens: 3000, minContentLength: 50 });
+    // Some models still wrap JSON in code fences; strip them.
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    console.warn(`News LLM summarization failed: ${err.message}`);
+    return {};
+  }
 }
 
 function renderHealthBlock(params) {
@@ -211,8 +256,11 @@ async function main() {
   const newsBySymbol = Object.fromEntries(newsResults.map((r, i) => {
     const items = r.status === 'fulfilled' ? r.value : [];
     const fresh = sortByDateDesc(dedupeByTitle(filterByAge(items, NEWS_LOOKBACK_HOURS)));
-    return [tickers[i].symbol, fresh.slice(0, NEWS_PER_TICKER)];
+    return [tickers[i].symbol, fresh.slice(0, NEWS_PER_TICKER_RAW)];
   }));
+
+  console.log('Summarizing news via LLM (DeepSeek → OpenRouter fallback)...');
+  const newsSummaries = await summarizeNewsBatch(tickers, newsBySymbol);
 
   // -- Compose briefing -----------------------------------------------------
   const today = new Date().toLocaleDateString('zh-TW', {
@@ -222,11 +270,12 @@ async function main() {
   const header = `📈 每日股票合理價速報\n${today}\n━━━━━━━━━━━━━━━━━━━━`;
 
   const cards = tickers.map(ticker => {
-    const params = mergeParams(ticker, quotesBySymbol[ticker.symbol], fundamentalsBySymbol[ticker.symbol], treasury10y, globals);
+    const quote   = quotesBySymbol[ticker.symbol];
+    const params  = mergeParams(ticker, quote, fundamentalsBySymbol[ticker.symbol], treasury10y, globals);
     const fairEps = calcFairPriceEPS(params);
     const fairFcf = calcFairPriceFCF(params);
-    const card    = renderCard(ticker, params, fairEps, fairFcf);
-    const news    = renderNewsBlock(newsBySymbol[ticker.symbol]);
+    const card    = renderCard(ticker, params, fairEps, fairFcf, quote);
+    const news    = renderNewsBlock(newsSummaries[ticker.symbol]);
     const health  = renderHealthBlock(params);
     return [card, news, health].filter(Boolean).join('\n\n');
   });

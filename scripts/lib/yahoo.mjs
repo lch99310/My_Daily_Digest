@@ -29,6 +29,7 @@ export async function fetchQuotes(symbols) {
       symbol: meta.symbol || sym,
       regularMarketPrice: meta.regularMarketPrice,
       regularMarketPreviousClose: meta.chartPreviousClose ?? meta.previousClose,
+      regularMarketTime: meta.regularMarketTime,
       source: 'yahoo-chart',
     };
   }));
@@ -53,10 +54,13 @@ export async function fetchQuotesStooq(symbols) {
   const lines = csv.trim().split('\n').slice(1);
   return lines.map(line => {
     const cols = line.split(',');
+    const date = (cols[1] || '').trim();
+    const epoch = date ? Math.floor(new Date(date + 'T16:00:00Z').getTime() / 1000) : undefined;
     return {
       symbol: (cols[0] || '').replace(/\.US$/i, ''),
       regularMarketPrice: Number(cols[6]),
       regularMarketPreviousClose: Number(cols[3]),  // Open as crude proxy
+      regularMarketTime: epoch,
       source: 'stooq',
     };
   }).filter(q => Number.isFinite(q.regularMarketPrice));
