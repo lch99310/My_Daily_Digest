@@ -13,8 +13,8 @@ import { dirname, resolve } from 'path';
 
 import { fetchSeries, summarizeSeries, toYoYSeries, fetchNextReleaseDate } from './lib/fred.mjs';
 import { fetchHistory } from './lib/yahoo.mjs';
-import { buildSparklineUrl, shortenChartUrl } from './lib/quickchart.mjs';
-import { fetchLatestQuarterlyCapex, formatCapexB } from './lib/sec-edgar.mjs';
+import { buildSparklineUrl, buildMultiSparklineUrl, shortenChartUrl } from './lib/quickchart.mjs';
+import { fetchLatestQuarterlyCapex, formatCapexB, shortPeriodLabel } from './lib/sec-edgar.mjs';
 
 const FRED_API_KEY    = process.env.FRED_API_KEY || '';
 const BOT_TOKEN       = process.env.FINANCE_TELEGRAM_BOT_TOKEN || '';
@@ -76,6 +76,22 @@ function visualWidth(s) {
 function padTo(s, width, align = 'left') {
   const pad = Math.max(0, width - visualWidth(s));
   return align === 'right' ? ' '.repeat(pad) + s : s + ' '.repeat(pad);
+}
+
+// Throttle parallel Promises to a max concurrency. FRED's stated rate is
+// 120 req/min — bursts of 20 in 1s sometimes get 429. Limit to 4 in-flight.
+async function pLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const i = cursor++;
+      try { out[i] = { status: 'fulfilled', value: await fn(items[i], i) }; }
+      catch (err) { out[i] = { status: 'rejected', reason: err }; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 // -- Card renderer ----------------------------------------------------------
@@ -231,12 +247,14 @@ function renderCapexTable(rows) {
 async function main() {
   const config = JSON.parse(await readFile(CONFIG_PATH, 'utf-8'));
 
-  console.log(`Fetching ${config.fred.length} FRED series + release dates...`);
-  const fredObsResults = await Promise.allSettled(
-    config.fred.map(cfg => fetchSeries(cfg.seriesId, { years: 5, apiKey: FRED_API_KEY })),
+  console.log(`Fetching ${config.fred.length} FRED series + release dates (throttled to 4/concurrent)...`);
+  const fredObsResults = await pLimit(
+    config.fred, 4,
+    cfg => fetchSeries(cfg.seriesId, { years: 5, apiKey: FRED_API_KEY }),
   );
-  const fredReleaseResults = await Promise.allSettled(
-    config.fred.map(cfg => fetchNextReleaseDate(cfg.seriesId, FRED_API_KEY)),
+  const fredReleaseResults = await pLimit(
+    config.fred, 4,
+    cfg => fetchNextReleaseDate(cfg.seriesId, FRED_API_KEY),
   );
   const fredEntries = config.fred.map((cfg, i) => {
     const obsR = fredObsResults[i];
@@ -343,14 +361,18 @@ async function main() {
     await sendMessage(`🔹 <b>${escapeHtml(buffettCfg.shortName)}</b> — ${escapeHtml(buffettCfg.zhName)}\n\n⚠️ FRED 抓取失敗`, 'HTML');
   }
 
-  // -- AI Capex table ----------------------------------------------------
+  // -- AI Capex table + 6-quarter trend chart ----------------------------
   console.log('Fetching AI capex from SEC EDGAR + manual estimates...');
   const publicEntries = config.capex.filter(c => !c.isPrivate && c.cik);
-  const capexResults = await Promise.allSettled(
-    publicEntries.map(c => fetchLatestQuarterlyCapex(c.cik)),
+  const capexResults = await pLimit(
+    publicEntries, 3,
+    c => fetchLatestQuarterlyCapex(c.cik, { historyCount: 6 }),
   );
 
   const capexRows = [];
+  const capexHistorySeries = [];
+  const capexPalette = ['rgb(54,162,235)', 'rgb(255,99,132)', 'rgb(75,192,192)', 'rgb(255,159,64)', 'rgb(153,102,255)', 'rgb(255,205,86)'];
+
   for (let i = 0; i < publicEntries.length; i++) {
     const cfg = publicEntries[i];
     const r = capexResults[i];
@@ -367,9 +389,20 @@ async function main() {
       name:      cfg.company,
       value:     formatCapexB(v.value),
       delta:     deltaStr,
-      period:    `${v.end} ${v.fp} (${v.form})`,
+      period:    shortPeriodLabel(v.end, v.fp),
       sortValue: v.value,
     });
+
+    // Chartable history: convert to billions for readable y-axis.
+    if (Array.isArray(v.history) && v.history.length >= 2) {
+      capexHistorySeries.push({
+        label: cfg.company,
+        points: v.history.map(h => ({
+          date: shortPeriodLabel(h.end, h.fp),
+          value: h.value / 1e9,
+        })),
+      });
+    }
   }
   for (const c of config.capex.filter(c => c.isPrivate)) {
     const est = c.estimatedCapex;
@@ -396,6 +429,20 @@ async function main() {
     `<pre>${escapeHtml(capexTable)}</pre>` +
     (privateNotes ? `\n\n<i>未上市估算來源</i>\n${escapeHtml(privateNotes)}` : '');
   await sendMessage(capexMsg, 'HTML');
+
+  // Combined 6-quarter trend chart for all public capex companies.
+  if (capexHistorySeries.length > 0) {
+    const longUrl = buildMultiSparklineUrl(capexHistorySeries, {
+      title: 'AI Capex 趨勢 — 近 6 期 ($B)',
+      yUnit: 'B',
+      width: 700,
+      height: 340,
+    });
+    if (longUrl) {
+      const url = longUrl.length > 3500 ? await shortenChartUrl(longUrl) : longUrl;
+      await sendPhoto(url, 'AI Capex 趨勢 — 近 6 期 ($B)');
+    }
+  }
 
   // -- Artifact ----------------------------------------------------------
   const briefing = [

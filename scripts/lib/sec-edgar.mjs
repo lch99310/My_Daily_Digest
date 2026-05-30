@@ -32,9 +32,10 @@ async function getJson(url) {
   return res.json();
 }
 
-// Returns { value, end, fp, fy, form, source, previousValue, previousEnd, periodKind }
-// where periodKind is 'Q' (quarterly) or 'FY' (annual).
-export async function fetchLatestQuarterlyCapex(cik) {
+// Returns { value, end, fp, fy, form, previousValue, previousEnd, periodKind,
+//           history } where `history` is an array of {date, value, fp, end}
+// for the most recent N periods (oldest → newest) usable for charting.
+export async function fetchLatestQuarterlyCapex(cik, { historyCount = 6 } = {}) {
   const padded = String(cik).padStart(10, '0');
 
   for (const concept of CAPEX_CONCEPTS) {
@@ -43,7 +44,7 @@ export async function fetchLatestQuarterlyCapex(cik) {
       const data = await getJson(url);
       const usd = data.units?.USD || [];
 
-      // Dedupe by `end` keeping the newest `filed` (amendments win).
+      // Dedupe by (end, periodKind) keeping the newest `filed` (amendments win).
       const byEnd = new Map();
       for (const u of usd) {
         if (!u.fp) continue;
@@ -67,6 +68,13 @@ export async function fetchLatestQuarterlyCapex(cik) {
 
       const latest = pool[0];
       const prev   = pool[1];
+
+      // history: oldest → newest, last N periods.
+      const history = pool
+        .slice(0, historyCount)
+        .reverse()
+        .map(u => ({ date: u.end, value: u.val, fp: u.fp, end: u.end }));
+
       return {
         value: latest.val,
         end: latest.end,
@@ -78,6 +86,7 @@ export async function fetchLatestQuarterlyCapex(cik) {
         periodKind: latest.periodKind,
         previousValue: prev?.val,
         previousEnd: prev?.end,
+        history,
       };
     } catch (err) {
       console.warn(`  CIK ${padded} ${concept}: ${err.message}`);
@@ -91,4 +100,11 @@ export function formatCapexB(usd) {
   if (usd >= 1e9)  return `$${(usd / 1e9).toFixed(2)}B`;
   if (usd >= 1e6)  return `$${(usd / 1e6).toFixed(1)}M`;
   return `$${usd.toFixed(0)}`;
+}
+
+// "2026-03-31" + "Q1" → "26Q1"; "2025-12-31" + "FY" → "25FY".
+export function shortPeriodLabel(end, fp) {
+  if (!end) return fp || '—';
+  const yr = end.slice(2, 4);
+  return `${yr}${fp || ''}`;
 }

@@ -80,13 +80,16 @@ function money(n) {
   return n.toFixed(2);
 }
 
-// Apply a scenario's growth/beta multipliers to a params object.
+// Apply a scenario's lever multipliers. Beta stays constant (systematic risk,
+// not a view variable); growth, PEG-derived P/E, and equity risk premium all
+// move — that's the sell-side scenario framework.
 function applyScenario(params, scenario) {
   if (!scenario) return params;
   return {
     ...params,
-    growth: Number.isFinite(params.growth) ? params.growth * scenario.growthMult : params.growth,
-    beta:   Number.isFinite(params.beta)   ? params.beta   * scenario.betaMult   : params.beta,
+    growth:  Number.isFinite(params.growth)  ? params.growth  * (scenario.growthMult ?? 1) : params.growth,
+    pegMult: Number.isFinite(params.pegMult) ? params.pegMult * (scenario.pegMult    ?? 1) : params.pegMult,
+    erp:     Number.isFinite(params.erp)     ? params.erp     * (scenario.erpMult    ?? 1) : params.erp,
   };
 }
 
@@ -318,7 +321,14 @@ async function main() {
     return [card, news, health].filter(Boolean).join('\n\n');
   });
 
-  const briefing = [header, ...cards.map(c => `${c}\n━━━━━━━━━━━━━━━━━━━━`)].join('\n\n');
+  const footer = globals.scenarioFootnote
+    ? `📐 ${globals.scenarioFootnote}`
+    : '';
+  const briefing = [
+    header,
+    ...cards.map(c => `${c}\n━━━━━━━━━━━━━━━━━━━━`),
+    footer,
+  ].filter(Boolean).join('\n\n');
 
   await writeFile(OUTPUT_FILE, briefing, 'utf-8');
   console.log(`Briefing written to ${OUTPUT_FILE} (${briefing.length} chars)`);
