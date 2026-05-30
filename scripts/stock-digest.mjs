@@ -10,7 +10,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
-import { fetchQuotes, fetchFundamentals, fetch10YTreasury } from './lib/yahoo.mjs';
+import { fetchQuotesResilient, fetchFundamentals, fetch10YTreasury } from './lib/yahoo.mjs';
 import { calcFairPriceEPS, calcFairPriceFCF } from './lib/fair-price.mjs';
 import { fetchFeed, dedupeByTitle, filterByAge, sortByDateDesc } from './lib/rss.mjs';
 
@@ -182,14 +182,11 @@ async function main() {
   const symbols = tickers.map(t => t.symbol);
 
   console.log(`Fetching live quotes for ${symbols.length} tickers...`);
-  let quotesBySymbol = {};
-  try {
-    const quotes = await fetchQuotes(symbols);
-    quotesBySymbol = Object.fromEntries(quotes.map(q => [q.symbol, q]));
-  } catch (err) {
-    console.error(`Live quote fetch failed: ${err.message}`);
-    throw err;
-  }
+  const quotes = await fetchQuotesResilient(symbols);
+  const quotesBySymbol = Object.fromEntries(quotes.map(q => [q.symbol, q]));
+  const okCount = quotes.filter(q => Number.isFinite(q.regularMarketPrice)).length;
+  console.log(`  got prices for ${okCount}/${symbols.length} tickers`);
+  if (okCount === 0) throw new Error('Could not fetch any live quotes (Yahoo + Stooq both failed)');
 
   console.log('Fetching fundamentals (best-effort, falls back to config cache)...');
   const fundResults = await Promise.allSettled(tickers.map(t => fetchFundamentals(t.symbol)));
