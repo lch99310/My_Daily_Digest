@@ -2,6 +2,30 @@
 // https://fred.stlouisfed.org/docs/api/fred/series_observations.html
 
 const TIMEOUT = 12_000;
+const MAX_ATTEMPTS = 3;
+
+// Retry transient failures (429, 5xx, network) with linear backoff. FRED's
+// stated limit is 120 reqs/min — bursts of 20 in 1s sometimes get throttled.
+async function fredGet(url, label) {
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
+      if (res.ok) return res.json();
+      const retryable = res.status === 429 || res.status >= 500;
+      const body = await res.text();
+      lastErr = new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+      if (!retryable || attempt === MAX_ATTEMPTS) throw lastErr;
+      console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}, retrying…`);
+    } catch (err) {
+      lastErr = err;
+      if (attempt === MAX_ATTEMPTS) throw err;
+      console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} failed: ${err.message}`);
+    }
+    await new Promise(r => setTimeout(r, 800 * attempt));
+  }
+  throw lastErr;
+}
 
 export async function fetchSeries(seriesId, { years = 5, apiKey } = {}) {
   if (!apiKey) throw new Error('FRED_API_KEY required');
@@ -18,9 +42,7 @@ export async function fetchSeries(seriesId, { years = 5, apiKey } = {}) {
     `&observation_start=${startStr}` +
     `&sort_order=asc`;
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
-  if (!res.ok) throw new Error(`FRED ${seriesId} HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await fredGet(url, seriesId);
 
   const obs = (data.observations || [])
     .filter(o => o.value !== '.' && o.value != null)
@@ -55,10 +77,10 @@ export async function fetchNextReleaseDate(seriesId, apiKey) {
   if (!apiKey) return null;
   try {
     // Step 1: find the release_id that owns this series.
-    const relUrl = `https://api.stlouisfed.org/fred/series/release?series_id=${encodeURIComponent(seriesId)}&api_key=${encodeURIComponent(apiKey)}&file_type=json`;
-    const relRes = await fetch(relUrl, { signal: AbortSignal.timeout(TIMEOUT) });
-    if (!relRes.ok) throw new Error(`series/release HTTP ${relRes.status}`);
-    const relData = await relRes.json();
+    const relUrl =
+      `https://api.stlouisfed.org/fred/series/release?series_id=${encodeURIComponent(seriesId)}` +
+      `&api_key=${encodeURIComponent(apiKey)}&file_type=json`;
+    const relData = await fredGet(relUrl, `${seriesId}/release`);
     const releaseId = relData.releases?.[0]?.id;
     if (!releaseId) return null;
 
@@ -71,9 +93,7 @@ export async function fetchNextReleaseDate(seriesId, apiKey) {
       `&include_release_dates_with_no_data=true` +
       `&sort_order=asc&limit=3` +
       `&api_key=${encodeURIComponent(apiKey)}&file_type=json`;
-    const datesRes = await fetch(datesUrl, { signal: AbortSignal.timeout(TIMEOUT) });
-    if (!datesRes.ok) throw new Error(`release/dates HTTP ${datesRes.status}`);
-    const datesData = await datesRes.json();
+    const datesData = await fredGet(datesUrl, `${seriesId}/dates`);
     return datesData.release_dates?.[0]?.date || null;
   } catch (err) {
     console.warn(`  next-release lookup for ${seriesId} failed: ${err.message}`);
