@@ -80,13 +80,34 @@ function money(n) {
   return n.toFixed(2);
 }
 
-function renderCard(ticker, params, fairEps, fairFcf, quote) {
+// Apply a scenario's growth/beta multipliers to a params object.
+function applyScenario(params, scenario) {
+  if (!scenario) return params;
+  return {
+    ...params,
+    growth: Number.isFinite(params.growth) ? params.growth * scenario.growthMult : params.growth,
+    beta:   Number.isFinite(params.beta)   ? params.beta   * scenario.betaMult   : params.beta,
+  };
+}
+
+function renderScenarioBlock(label, params) {
+  const fairEps = calcFairPriceEPS(params);
+  const fairFcf = calcFairPriceFCF(params);
   const epsFair = fairEps?.fairToday;
   const fcfFair = fairFcf?.fairToday;
   const epsGap  = Number.isFinite(epsFair) && Number.isFinite(params.price) ? (params.price - epsFair) / epsFair : NaN;
   const fcfGap  = Number.isFinite(fcfFair) && Number.isFinite(params.price) ? (params.price - fcfFair) / fcfFair : NaN;
   const reqReturn = fairEps?.requiredReturn ?? fairFcf?.requiredReturn;
 
+  return [
+    label,
+    `EPS  USD ${money(epsFair)}  (${pct(epsGap)})`,
+    `FCF  USD ${money(fcfFair)}  (${pct(fcfGap)})`,
+    `成長 ${pctRaw(params.growth)} · Beta ${num1(params.beta)} · 要求報酬 ${pctRaw(reqReturn)}`,
+  ].join('\n');
+}
+
+function renderCard(ticker, params, quote, scenarios) {
   // Quote epoch → MM-DD label. Yahoo returns regularMarketTime as Unix
   // seconds; Stooq fills it in too. Fallback to today if missing.
   let dateLabel = new Date().toISOString().slice(5, 10);
@@ -94,16 +115,18 @@ function renderCard(ticker, params, fairEps, fairFcf, quote) {
     dateLabel = new Date(quote.regularMarketTime * 1000).toISOString().slice(5, 10);
   }
 
-  // Vertical layout — avoids CJK monospace alignment headaches on mobile fonts.
-  const lines = [
-    `收盤 (${dateLabel})  USD ${money(params.price)}`,
-    `EPS 合理價         USD ${money(epsFair)}  (${pct(epsGap)})`,
-    `FCF 合理價         USD ${money(fcfFair)}  (${pct(fcfGap)})`,
-  ];
+  const priceLine = `收盤 (${dateLabel})  USD ${money(params.price)}`;
 
-  const meta = `成長 ${pctRaw(params.growth)} · Beta ${num1(params.beta)} · 要求報酬 ${pctRaw(reqReturn)}`;
+  const blocks = [];
+  for (const key of ['base', 'bull', 'bear']) {
+    const s = scenarios[key];
+    if (!s) continue;
+    const label = key === 'base' ? '合理價' : s.label;
+    const scenarioParams = applyScenario(params, s);
+    blocks.push(renderScenarioBlock(label, scenarioParams));
+  }
 
-  return `🔹 ${ticker.symbol} — ${ticker.zhName}\n${ticker.description}\n\n${lines.join('\n')}\n\n${meta}`;
+  return `🔹 ${ticker.symbol} — ${ticker.zhName}\n${ticker.description}\n\n${priceLine}\n\n${blocks.join('\n\n')}`;
 }
 
 function pctRaw(n) {
@@ -173,6 +196,18 @@ function renderHealthBlock(params) {
 
 // -- Telegram delivery ------------------------------------------------------
 
+async function fetchWithRetry(url, opts, { label, attempts = 3 } = {}) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fetch(url, opts);
+    } catch (err) {
+      console.warn(`[${label}] fetch attempt ${i}/${attempts} failed: ${err.message}`);
+      if (i < attempts) await new Promise(r => setTimeout(r, 1500 * i));
+    }
+  }
+  return null;
+}
+
 async function sendTelegram(text) {
   const MAX_LEN = 4000;
   const chunks = [];
@@ -196,12 +231,17 @@ async function sendTelegram(text) {
   for (const { label, chatId } of destinations) {
     try {
       for (let i = 0; i < chunks.length; i++) {
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: chunks[i], disable_web_page_preview: true }),
-          signal: AbortSignal.timeout(15_000),
-        });
+        const res = await fetchWithRetry(
+          `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: chunks[i], disable_web_page_preview: true }),
+            signal: AbortSignal.timeout(15_000),
+          },
+          { label },
+        );
+        if (!res) throw new Error('all retries exhausted');
         if (!res.ok) {
           const err = await res.text();
           throw new Error(`Telegram API error: ${err.slice(0, 200)}`);
@@ -272,9 +312,7 @@ async function main() {
   const cards = tickers.map(ticker => {
     const quote   = quotesBySymbol[ticker.symbol];
     const params  = mergeParams(ticker, quote, fundamentalsBySymbol[ticker.symbol], treasury10y, globals);
-    const fairEps = calcFairPriceEPS(params);
-    const fairFcf = calcFairPriceFCF(params);
-    const card    = renderCard(ticker, params, fairEps, fairFcf, quote);
+    const card    = renderCard(ticker, params, quote, globals.scenarios);
     const news    = renderNewsBlock(newsSummaries[ticker.symbol]);
     const health  = renderHealthBlock(params);
     return [card, news, health].filter(Boolean).join('\n\n');
