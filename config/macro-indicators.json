@@ -1,0 +1,89 @@
+{
+  "_doc": "Weekly macro digest config. Most series come from FRED; FX/index from Yahoo. Pre-IPO capex (SpaceX/xAI) flagged with isPrivate:true — sourced via news scraping in v2.",
+  "fred": [
+    {
+      "seriesId": "CPIAUCSL",
+      "zhName": "CPI 消費者物價指數 (YoY)",
+      "description": "觀察通膨壓力；FED 利率決策核心參考指標。",
+      "transform": "yoy",
+      "unit": "%",
+      "releaseSchedule": "每月中旬發布上月數據"
+    },
+    {
+      "seriesId": "UNRATE",
+      "zhName": "失業率 Unemployment Rate",
+      "description": "勞動市場鬆緊；FED 雙重使命之一。",
+      "transform": "level",
+      "unit": "%",
+      "releaseSchedule": "每月第一週週五"
+    },
+    {
+      "seriesId": "PAYEMS",
+      "zhName": "非農就業 Non-farm Payrolls (MoM 變動千人)",
+      "description": "經濟動能即時訊號；與失業率同日發布。",
+      "transform": "mom_diff",
+      "unit": "K",
+      "releaseSchedule": "每月第一週週五"
+    },
+    {
+      "seriesId": "DFF",
+      "zhName": "聯邦基金有效利率 Federal Funds Rate",
+      "description": "FED 政策利率實際成交值；資產定價基準。",
+      "transform": "level",
+      "unit": "%",
+      "releaseSchedule": "每日更新"
+    },
+    {
+      "seriesId": "PCEPILFE",
+      "zhName": "核心 PCE 物價指數 (YoY)",
+      "description": "FED 偏好的通膨指標，剔除食品與能源。",
+      "transform": "yoy",
+      "unit": "%",
+      "releaseSchedule": "每月底發布前月數據"
+    },
+    {
+      "seriesId": "NAPM",
+      "zhName": "ISM 製造業 PMI",
+      "description": "製造業景氣領先指標；50 為擴張/收縮分水嶺。",
+      "transform": "level",
+      "unit": "",
+      "releaseSchedule": "每月第一個工作日"
+    },
+    {
+      "seriesId": "DPCERA3M086SBEA",
+      "zhName": "實質個人消費支出指數 (YoY)",
+      "description": "美國消費端真實動能；最終銷售動向代理。",
+      "transform": "yoy",
+      "unit": "%",
+      "releaseSchedule": "每月底發布前月數據"
+    }
+  ],
+  "yahoo": [
+    {
+      "symbol": "DX-Y.NYB",
+      "zhName": "美元指數 DXY",
+      "description": "美元對六大主要貨幣加權；全球風險情緒與資金流向指標。",
+      "unit": ""
+    },
+    {
+      "symbol": "JPY=X",
+      "zhName": "美元/日圓 USD/JPY",
+      "description": "全球套利交易核心；日銀政策與美日利差晴雨表。",
+      "unit": ""
+    },
+    {
+      "symbol": "^WILL5000IND",
+      "zhName": "Wilshire 5000 全市場指數",
+      "description": "美股總市值代理；Buffett Indicator (市值/GDP) 分子。",
+      "unit": ""
+    }
+  ],
+  "capex": [
+    { "company": "Alphabet (GOOGL)", "ticker": "GOOGL", "isPrivate": false, "note": "季報 Capex 揭露；AI/雲基建投入" },
+    { "company": "Meta (META)",     "ticker": "META",  "isPrivate": false, "note": "季報 Capex；AI 訓練叢集擴張節奏" },
+    { "company": "Microsoft (MSFT)", "ticker": "MSFT", "isPrivate": false, "note": "季報 Capex；Azure + OpenAI 算力" },
+    { "company": "Amazon AWS",       "ticker": "AMZN", "isPrivate": false, "note": "AWS segment capex；需從 10-Q 拆分" },
+    { "company": "SpaceX",           "ticker": null,    "isPrivate": true,  "note": "Pre-IPO；依賴新聞估算 (Starlink + Starship)" },
+    { "company": "xAI",              "ticker": null,    "isPrivate": true,  "note": "Pre-IPO；Colossus 叢集擴建估算" }
+  ]
+}
