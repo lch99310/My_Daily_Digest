@@ -30,6 +30,7 @@ export async function fetchQuotes(symbols) {
       regularMarketPrice: meta.regularMarketPrice,
       regularMarketPreviousClose: meta.chartPreviousClose ?? meta.previousClose,
       regularMarketTime: meta.regularMarketTime,
+      currency: meta.currency,
       source: 'yahoo-chart',
     };
   }));
@@ -40,10 +41,22 @@ export async function fetchQuotes(symbols) {
   });
 }
 
+// Map Yahoo-format ticker → Stooq-format. Stooq uses lowercase + exchange
+// suffix that doesn't match Yahoo's: US has no suffix → .us, ASX .AX → .au,
+// HKEX .HK → .hk, LSE .L → .uk, TSE .T → .jp.
+function toStooqSymbol(yahooSymbol) {
+  const s = yahooSymbol.toLowerCase();
+  if (s.endsWith('.ax')) return s.replace(/\.ax$/, '.au');
+  if (s.endsWith('.hk')) return s;  // Stooq already uses .hk
+  if (s.endsWith('.l'))  return s.replace(/\.l$/,  '.uk');
+  if (s.endsWith('.t'))  return s.replace(/\.t$/,  '.jp');
+  return `${s}.us`;
+}
+
 // Stooq CSV fallback for live prices (no auth, no rate limit headaches).
 // CSV format with f=sd2t2ohlc:  Symbol,Date,Time,Open,High,Low,Close
 export async function fetchQuotesStooq(symbols) {
-  const stooqSyms = symbols.map(s => `${s.toLowerCase()}.us`).join(',');
+  const stooqSyms = symbols.map(toStooqSymbol).join(',');
   const url = `https://stooq.com/q/l/?s=${stooqSyms}&f=sd2t2ohlc&h&e=csv`;
   const res = await fetch(url, {
     headers: { 'User-Agent': UA },
@@ -56,8 +69,17 @@ export async function fetchQuotesStooq(symbols) {
     const cols = line.split(',');
     const date = (cols[1] || '').trim();
     const epoch = date ? Math.floor(new Date(date + 'T16:00:00Z').getTime() / 1000) : undefined;
+    // Strip exchange suffix so caller can match against original Yahoo symbol.
+    const stooqSym = (cols[0] || '').toLowerCase();
+    const yahooSym = stooqSym
+      .replace(/\.us$/, '')
+      .replace(/\.au$/, '.AX')
+      .replace(/\.hk$/, '.HK')
+      .replace(/\.uk$/, '.L')
+      .replace(/\.jp$/, '.T')
+      .toUpperCase();
     return {
-      symbol: (cols[0] || '').replace(/\.US$/i, ''),
+      symbol: yahooSym,
       regularMarketPrice: Number(cols[6]),
       regularMarketPreviousClose: Number(cols[3]),  // Open as crude proxy
       regularMarketTime: epoch,

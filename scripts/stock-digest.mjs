@@ -110,7 +110,7 @@ function applyScenario(params, scenario) {
   };
 }
 
-function renderScenarioBlock(label, params) {
+function renderScenarioBlock(label, params, currency) {
   const fairEps = calcFairPriceEPS(params);
   const fairFcf = calcFairPriceFCF(params);
   const epsFair = fairEps?.fairToday;
@@ -121,8 +121,8 @@ function renderScenarioBlock(label, params) {
 
   return [
     label,
-    `EPS  USD ${money(epsFair)}  (${pct(epsGap)})`,
-    `FCF  USD ${money(fcfFair)}  (${pct(fcfGap)})`,
+    `EPS  ${currency} ${money(epsFair)}  (${pct(epsGap)})`,
+    `FCF  ${currency} ${money(fcfFair)}  (${pct(fcfGap)})`,
     `成長 ${pctRaw(params.growth)} · Beta ${num1(params.beta)} · 要求報酬 ${pctRaw(reqReturn)}`,
   ].join('\n');
 }
@@ -135,7 +135,10 @@ function renderCard(ticker, params, quote, scenarios) {
     dateLabel = new Date(quote.regularMarketTime * 1000).toISOString().slice(5, 10);
   }
 
-  const priceLine = `收盤 (${dateLabel})  USD ${money(params.price)}`;
+  // Currency: prefer live quote field (Yahoo chart meta.currency), then a
+  // manual override in config (ticker.currency), then USD as default.
+  const currency = (quote?.currency || ticker.currency || 'USD').toUpperCase();
+  const priceLine = `收盤 (${dateLabel})  ${currency} ${money(params.price)}`;
 
   const blocks = [];
   for (const key of ['base', 'bull', 'bear']) {
@@ -143,7 +146,7 @@ function renderCard(ticker, params, quote, scenarios) {
     if (!s) continue;
     const label = key === 'base' ? '合理價' : s.label;
     const scenarioParams = applyScenario(params, s);
-    blocks.push(renderScenarioBlock(label, scenarioParams));
+    blocks.push(renderScenarioBlock(label, scenarioParams, currency));
   }
 
   return `🔹 ${ticker.symbol} — ${ticker.zhName}\n${ticker.description}\n\n${priceLine}\n\n${blocks.join('\n\n')}`;
