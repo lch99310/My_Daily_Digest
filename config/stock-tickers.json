@@ -1,5 +1,5 @@
 {
-  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails. pegOverride is per-ticker — see Goldman/Wall Street category guide in pegRationale. Monthly auto-review (scripts/peg-review.mjs) updates pegOverride + pegLastChange + pegHistory based on 30d news + AI capex trends; card shows pegRationale for 3 days after change then hides it.",
+  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails. pegOverride is per-ticker. Monthly auto-review (scripts/peg-review.mjs) updates pegOverride + pegLastChange + pegHistory based on 30d news + AI capex trends; card shows pegRationale for 3 days after change then hides it.",
   "globals": {
     "equityRiskPremium": 0.06,
     "pegMultiplier": 1.25,
@@ -39,10 +39,10 @@
       "symbol": "NVDA",
       "exchange": "US",
       "zhName": "NVIDIA",
-      "searchKeywords": "NVDA OR NVIDIA",
-      "description": "GPU 與 CUDA 平台龍頭；在 Agentic AI 時代是模型訓練與推論的事實標準算力供應者。",
+      "searchKeywords": "NVDA OR NVIDIA OR Blackwell OR Rubin",
+      "description": "GPU + CUDA 平台壟斷者；Agentic AI 訓練與推理算力的事實標準供應者，全棧優勢（GPU + CPU + DPU + 網路 + 軟體）無人能及。",
       "pegOverride": 2,
-      "pegRationale": "CUDA 護城河 + AI 基建龍頭，sell-side 一致給 premium",
+      "pegRationale": "唯一全棧（GPU+CPU+DPU+SW）+ CUDA 護城河，sell-side 對 mega-cap AI 一致給 premium",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
         {
@@ -63,8 +63,8 @@
       "symbol": "AMD",
       "exchange": "US",
       "zhName": "Advanced Micro Devices",
-      "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR Instinct OR datacenter)",
-      "description": "GPU/CPU 雙線挑戰者；MI300/350 系列在 Agentic AI 推論市場逐步啃下 NVIDIA 份額。",
+      "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR MI400 OR Instinct)",
+      "description": "GPU/CPU 雙線挑戰者；MI400 432GB HBM4 在 Agentic AI 長上下文與多 agent 工作負載相對 NVIDIA 反而有記憶體優勢，EPYC 持續啃下伺服器 CPU 份額。",
       "pegOverride": 1.8,
       "pegRationale": "AI 挑戰者，搶 share 中但生態系與毛利仍落後 NVDA",
       "pegLastChange": "2026-05-30",
@@ -87,16 +87,21 @@
       "symbol": "TSM",
       "exchange": "US",
       "zhName": "Taiwan Semiconductor",
-      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\"",
-      "description": "全球最先進製程晶圓代工龍頭；幾乎所有 Agentic AI 加速器（NVIDIA、AMD、Google TPU）的最終承載者。",
-      "pegOverride": 1.4,
-      "pegRationale": "製程龍頭，但 cyclical + 地緣政治折扣壓低 multiple",
-      "pegLastChange": "2026-05-30",
+      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\" OR CoWoS OR N2",
+      "description": "全球最先進製程晶圓代工龍頭；NVIDIA Rubin、AMD MI400、TPU v7 等 AI 加速器全部在此生產，CoWoS 是 HBM 整合的唯一商業化先進封裝方案。",
+      "pegOverride": 1.5,
+      "pegRationale": "製程獨占護城河；最低中國 IT 衝擊；氦氣 EUV 為新風險但短期可承受",
+      "pegLastChange": "2026-05-31",
       "pegHistory": [
         {
           "date": "2026-05-30",
           "peg": 1.4,
           "reason": "初始設定：AI 週期類分類"
+        },
+        {
+          "date": "2026-05-31",
+          "peg": 1.5,
+          "reason": "從 1.4 上修；製程獨占性 + CoWoS 唯一商業化方案的稀缺溢價"
         }
       ],
       "cache": {
@@ -111,8 +116,8 @@
       "symbol": "ARM",
       "exchange": "US",
       "zhName": "Arm Holdings",
-      "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\"",
-      "description": "CPU 指令集授權商；邊緣 Agentic AI 與資料中心 Grace CPU 的核心 IP 供應方。",
+      "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\" OR \"AGI CPU\" OR Neoverse",
+      "description": "CPU 指令集授權商；Agentic AI 控制平面需 4× CPU/GW，AGI CPU 2H26 量產、Meta 為首客戶；IP licensing 模型有極高營運槓桿。",
       "pegOverride": 2,
       "pegRationale": "IP licensing + royalty 模型，極高營運槓桿",
       "pegLastChange": "2026-05-30",
@@ -135,10 +140,10 @@
       "symbol": "MU",
       "exchange": "US",
       "zhName": "Micron Technology",
-      "searchKeywords": "Micron OR HBM3E OR HBM4",
-      "description": "DRAM/HBM 三巨頭之一；HBM3E/HBM4 是 Agentic AI 訓練算力的記憶體瓶頸關鍵供應者。",
+      "searchKeywords": "Micron OR HBM3E OR HBM4 OR \"CHIPS Act\" memory",
+      "description": "美國本土唯一垂直整合 HBM + DRAM + NAND；HBM 是 Agentic AI 訓練算力的記憶體瓶頸，CHIPS Act 提供額外戰略保護。",
       "pegOverride": 1.2,
-      "pegRationale": "HBM需求強勁，記憶體週期性減弱，新聞正面支撐小幅調升估值倍數。",
+      "pegRationale": "HBM 需求強勁，記憶體週期性減弱，新聞正面支撐小幅調升估值倍數。",
       "pegLastChange": "2026-05-31",
       "pegHistory": [
         {
@@ -164,16 +169,21 @@
       "symbol": "VRT",
       "exchange": "US",
       "zhName": "Vertiv Holdings",
-      "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\"",
-      "description": "資料中心電源/冷卻基礎設施龍頭；Agentic AI 機房高密度部署的水冷與配電骨幹。",
-      "pegOverride": 1.7,
-      "pegRationale": "機房冷卻/配電龍頭，AI capex 直接受益",
-      "pegLastChange": "2026-05-30",
+      "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\" OR Liebert",
+      "description": "資料中心電源 + 液冷基建龍頭；Agentic AI 機櫃從 80kW 推到 600kW，水冷與配電解決方案是直接最大受益方。",
+      "pegOverride": 1.8,
+      "pegRationale": "AI 機櫃功率密度暴升直接受益；backlog 與 Q1 EPS +83% 反映強執行力",
+      "pegLastChange": "2026-05-31",
       "pegHistory": [
         {
           "date": "2026-05-30",
           "peg": 1.7,
           "reason": "初始設定：AI 基建/電力分類"
+        },
+        {
+          "date": "2026-05-31",
+          "peg": 1.8,
+          "reason": "從 1.7 上修；600kW 機櫃時代直接受益最大，backlog $15B + Q1 EPS +83%"
         }
       ],
       "cache": {
@@ -188,16 +198,21 @@
       "symbol": "GEV",
       "exchange": "US",
       "zhName": "GE Vernova",
-      "searchKeywords": "\"GE Vernova\" OR Vernova",
-      "description": "燃氣輪機與電網設備龍頭；AI 算力需求暴增推動天然氣電廠新建與電網升級訂單。",
-      "pegOverride": 1.6,
-      "pegRationale": "燃氣輪機 + 電網，分拆後執行力觀察期",
-      "pegLastChange": "2026-05-30",
+      "searchKeywords": "\"GE Vernova\" OR Vernova OR \"gas turbine\"",
+      "description": "重型燃氣輪機 + 電網設備龍頭；AI 算力需求推動天然氣電廠新建與電網升級，backlog $163B 鎖定能見度至 2030+。",
+      "pegOverride": 1.8,
+      "pegRationale": "$163B backlog 鎖定能見度至 2030+；變壓器荒結構性受益",
+      "pegLastChange": "2026-05-31",
       "pegHistory": [
         {
           "date": "2026-05-30",
           "peg": 1.6,
           "reason": "初始設定：AI 基建/電力分類"
+        },
+        {
+          "date": "2026-05-31",
+          "peg": 1.8,
+          "reason": "從 1.6 上修；$163B backlog + 24GW 燃氣輪機產能擴張延伸至 2030+"
         }
       ],
       "cache": {
@@ -212,10 +227,10 @@
       "symbol": "ETN",
       "exchange": "US",
       "zhName": "Eaton Corp",
-      "searchKeywords": "\"Eaton Corp\" OR Eaton Corporation",
-      "description": "電力管理與配電設備跨國龍頭；資料中心 UPS、母線槽、開關櫃的最大受惠者之一。",
+      "searchKeywords": "\"Eaton Corp\" OR \"Eaton Corporation\" OR \"Boyd Thermal\"",
+      "description": "電力管理與配電設備跨國龍頭；資料中心 UPS、母線槽、開關櫃直接受益，2024 收購 Boyd Thermal $9.5B 強化液冷布局。",
       "pegOverride": 1.7,
-      "pegRationale": "quality compounder，AI 電力主受益",
+      "pegRationale": "quality compounder + 變壓器 + 液冷三引擎；完全免疫中國衝擊",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
         {
@@ -236,10 +251,10 @@
       "symbol": "VST",
       "exchange": "US",
       "zhName": "Vistra Corp",
-      "searchKeywords": "\"Vistra Corp\" OR \"Vistra Energy\"",
-      "description": "獨立發電商；核能機隊（Comanche Peak 等）成為 AI 資料中心直購電 (PPA) 的稀缺資產。",
+      "searchKeywords": "\"Vistra Corp\" OR \"Vistra Energy\" OR \"Comanche Peak\"",
+      "description": "獨立發電商 + 核電機隊（Comanche Peak）；AI 直購電 (PPA) 需求暴增使既有核電廠資產價值重估。",
       "pegOverride": 1.5,
-      "pegRationale": "獨立發電 + 核電，AI PPA 受益但 IPP 屬性",
+      "pegRationale": "AI PPA 受益但 IPP 屬性 vs CEG 純核電溢價較低",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
         {
@@ -260,16 +275,21 @@
       "symbol": "CEG",
       "exchange": "US",
       "zhName": "Constellation Energy",
-      "searchKeywords": "\"Constellation Energy\" OR Constellation nuclear",
-      "description": "美國最大核電廠運營商；與 Microsoft 等大廠簽長期 PPA，是 AI 24×7 無碳電力的代表標的。",
-      "pegOverride": 1.5,
-      "pegRationale": "最大核電業者，MSFT PPA 溢價但受監管",
-      "pegLastChange": "2026-05-30",
+      "searchKeywords": "\"Constellation Energy\" OR \"Three Mile Island\" OR \"nuclear PPA\"",
+      "description": "美國最大核電廠運營商（22 座反應堆 ~33GW）；24×7 firm power 是 hyperscaler 跑 AI 工作負載唯一可靠的無碳電力來源，已簽 MSFT 20 年 PPA。",
+      "pegOverride": 1.6,
+      "pegRationale": "24×7 firm power 對 hyperscaler 不可替代；MSFT 20Y PPA 鎖定溢價",
+      "pegLastChange": "2026-05-31",
       "pegHistory": [
         {
           "date": "2026-05-30",
           "peg": 1.5,
           "reason": "初始設定：AI 基建/電力分類"
+        },
+        {
+          "date": "2026-05-31",
+          "peg": 1.6,
+          "reason": "從 1.5 上修；24×7 firm power 唯一解的稀缺溢價"
         }
       ],
       "cache": {
@@ -277,6 +297,150 @@
         "eps": 9.2,
         "fcfPerShare": 6.5,
         "growth5y": 0.16,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "FCX",
+      "exchange": "US",
+      "zhName": "Freeport-McMoRan",
+      "searchKeywords": "\"Freeport-McMoRan\" OR FCX OR Grasberg",
+      "description": "全球最大非中國銅生產商；每 100MW AI campus 用銅 500-2000 噸（高壓饋線 + 機房 busbar），銅是 AI 資料中心金額最大宗的金屬。",
+      "pegOverride": 1.5,
+      "pegRationale": "AI DC 最大宗金屬；S&P Global 預測 2040 全球銅赤字 1000 萬噸",
+      "pegLastChange": "2026-05-31",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.5,
+          "reason": "初始設定：AI 上游礦產 — 銅供應龍頭"
+        }
+      ],
+      "cache": {
+        "beta": 2.1,
+        "eps": 2.5,
+        "fcfPerShare": 1.8,
+        "growth5y": 0.2,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "CLF",
+      "exchange": "US",
+      "zhName": "Cleveland-Cliffs",
+      "searchKeywords": "\"Cleveland-Cliffs\" OR \"GOES steel\" OR \"electrical steel\" OR Weirton",
+      "description": "美國本土唯一晶粒取向電工鋼（GOES）生產商；GOES 是變壓器鐵芯關鍵材料，高壓變壓器交期被推到 5 年是其結構性受益點。",
+      "pegOverride": 1.6,
+      "pegRationale": "美國 GOES 獨家；變壓器 5 年交期是結構性受益點；完全免疫中國衝擊",
+      "pegLastChange": "2026-05-31",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.6,
+          "reason": "初始設定：AI 上游礦產 — GOES 美國本土唯一"
+        }
+      ],
+      "cache": {
+        "beta": 2.5,
+        "eps": 0.5,
+        "fcfPerShare": 0.8,
+        "growth5y": 0.15,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "LYC.AX",
+      "exchange": "AU",
+      "zhName": "Lynas Rare Earths",
+      "searchKeywords": "Lynas OR \"rare earth\" OR Nd-Fe-B OR Mt Weld",
+      "description": "中國以外最大稀土生產商（澳洲 Mt Weld 礦 + 馬來西亞冶煉）；稀土磁鐵用於風力發電、馬達、硬碟，中國掌握全球冶煉 90%+，2025 重稀土管制利多供應替代方。",
+      "pegOverride": 1.7,
+      "pegRationale": "中國以外最大稀土；垂直整合澳洲礦+大馬冶煉；中國管制溢價",
+      "pegLastChange": "2026-05-31",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.7,
+          "reason": "初始設定：AI 上游礦產 — 非中國稀土戰略受益"
+        }
+      ],
+      "cache": {
+        "beta": 1.8,
+        "eps": 0.15,
+        "fcfPerShare": 0.1,
+        "growth5y": 0.3,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "BHP",
+      "exchange": "US",
+      "zhName": "BHP Group",
+      "searchKeywords": "\"BHP Group\" OR \"BHP Billiton\" OR Escondida OR \"OZ Minerals\"",
+      "description": "全球最大多元化礦業集團；智利 Escondida 銅礦 + 鎳 + 鐵礦；AI 算力推升銅與儲能用鎳需求，跨週期受益。",
+      "pegOverride": 1.3,
+      "pegRationale": "多元化礦業 diversified discount；銅 + 鎳 + 鐵多軸受益",
+      "pegLastChange": "2026-05-31",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.3,
+          "reason": "初始設定：AI 上游礦產 — 多元化礦業"
+        }
+      ],
+      "cache": {
+        "beta": 0.95,
+        "eps": 5,
+        "fcfPerShare": 3.5,
+        "growth5y": 0.08,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "RIO",
+      "exchange": "US",
+      "zhName": "Rio Tinto",
+      "searchKeywords": "\"Rio Tinto\" OR Kennecott OR \"Oyu Tolgoi\"",
+      "description": "全球第二大多元化礦業集團；Kennecott (美) + Oyu Tolgoi (蒙古) 銅礦；同時受惠 AI 電力與資料中心建材（鋁、鐵）需求。",
+      "pegOverride": 1.3,
+      "pegRationale": "類 BHP 多元化礦業；銅 + 鐵 + 鋁三引擎",
+      "pegLastChange": "2026-05-31",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.3,
+          "reason": "初始設定：AI 上游礦產 — 多元化礦業"
+        }
+      ],
+      "cache": {
+        "beta": 0.85,
+        "eps": 7.5,
+        "fcfPerShare": 6,
+        "growth5y": 0.07,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "PLS.AX",
+      "exchange": "AU",
+      "zhName": "Pilbara Minerals",
+      "searchKeywords": "\"Pilbara Minerals\" OR Pilgangoora OR lithium",
+      "description": "澳洲純鋰礦商（Pilgangoora 礦山）；資料中心 BBU、Tesla Megapack 儲能、微電網都靠鋰電池，是非中國鋰供應鏈核心。",
+      "pegOverride": 1.4,
+      "pegRationale": "純鋰礦戰略受益但鋰價 cyclical 限制溢價",
+      "pegLastChange": "2026-05-31",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.4,
+          "reason": "初始設定：AI 上游礦產 — 鋰戰略受益"
+        }
+      ],
+      "cache": {
+        "beta": 2.4,
+        "eps": 0.05,
+        "fcfPerShare": 0.1,
+        "growth5y": 0.35,
         "asOf": "2026-Q1"
       }
     }
