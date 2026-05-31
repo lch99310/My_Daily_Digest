@@ -7,22 +7,35 @@
 const TIMEOUT = 12_000;
 const MAX_ATTEMPTS = 3;
 
-// Retry transient failures (429, 5xx, network) with linear backoff. FRED's
-// stated limit is 120 reqs/min — bursts of 20 in 1s sometimes get throttled.
-// Non-retryable errors (400 = bad request, 401/403 = bad key) fail fast so
-// the caller can move to DBnomics immediately instead of wasting 3 attempts.
+// FRED limits API keys to 120 requests/minute (= 2/sec). Even with a 4-way
+// concurrency cap, our burst of 8 series × {obs, release, dates} ≈ 24 calls
+// could briefly exceed 2/sec and trigger 429. We enforce a global ~700ms gap
+// between call STARTS via a module-level last-call timestamp; combined with
+// concurrency=2 in the caller this guarantees ~1.4 req/sec sustained.
+let _lastFredCallAt = 0;
+const FRED_MIN_GAP_MS = 700;
+
+async function fredRateLimitWait() {
+  const now = Date.now();
+  const wait = Math.max(0, _lastFredCallAt + FRED_MIN_GAP_MS - now);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  _lastFredCallAt = Date.now();
+}
+
+// Retry transient failures with linear backoff. 429 uses a longer base delay
+// to let the rate window roll forward. Non-retryable (400/401/403) fails fast.
 async function fredGet(url, label) {
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await fredRateLimitWait();
     let res;
     try {
       res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
     } catch (err) {
-      // Network-level failure (DNS, timeout, reset) — always retryable.
       lastErr = err;
       if (attempt === MAX_ATTEMPTS) throw err;
       console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} network err: ${err.message}`);
-      await new Promise(r => setTimeout(r, 800 * attempt));
+      await new Promise(r => setTimeout(r, 1000 * attempt));
       continue;
     }
 
@@ -33,8 +46,9 @@ async function fredGet(url, label) {
     const retryable = res.status === 429 || res.status >= 500;
     if (!retryable) throw lastErr;
     if (attempt === MAX_ATTEMPTS) throw lastErr;
-    console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}, retrying…`);
-    await new Promise(r => setTimeout(r, 800 * attempt));
+    const backoff = res.status === 429 ? 2000 * attempt : 800 * attempt;
+    console.warn(`  FRED ${label} attempt ${attempt}/${MAX_ATTEMPTS} got ${res.status}, retrying in ${backoff}ms…`);
+    await new Promise(r => setTimeout(r, backoff));
   }
   throw lastErr;
 }
@@ -53,10 +67,10 @@ function dbnomicsPeriodToDate(period) {
 }
 
 async function fetchSeriesDBnomics(seriesId, { years = 5 } = {}) {
-  // DBnomics organizes each FRED series as its own dataset, so the canonical
-  // URL is /series/FRED/{dataset_code}/{series_code} where both are seriesId.
-  // The shortened /series/FRED/{seriesId} form returns 404.
-  const url = `https://api.db.nomics.world/v22/series/FRED/${encodeURIComponent(seriesId)}/${encodeURIComponent(seriesId)}?observations=1`;
+  // DBnomics organizes FRED data by RELEASE (e.g. UNRATE is in CES, DFF in
+  // H15) — there is no canonical "dataset = series_id" rule. Use the search
+  // filter endpoint which finds a series by code across all FRED datasets.
+  const url = `https://api.db.nomics.world/v22/series?provider_code=FRED&series_code=${encodeURIComponent(seriesId)}&observations=1`;
   const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
   if (!res.ok) throw new Error(`DBnomics HTTP ${res.status}`);
   const data = await res.json();

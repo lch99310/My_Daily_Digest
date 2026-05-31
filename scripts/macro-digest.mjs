@@ -301,13 +301,13 @@ function fmtDeltaPct(curr, base) {
 async function main() {
   const config = JSON.parse(await readFile(CONFIG_PATH, 'utf-8'));
 
-  console.log(`Fetching ${config.fred.length} FRED series + release dates (throttled to 4/concurrent)...`);
+  console.log(`Fetching ${config.fred.length} FRED series + release dates (concurrency 2, ~1.4 req/sec)…`);
   const fredObsResults = await pLimit(
-    config.fred, 4,
+    config.fred, 2,
     cfg => fetchSeries(cfg.seriesId, { years: 5, apiKey: FRED_API_KEY }),
   );
   const fredReleaseResults = await pLimit(
-    config.fred, 4,
+    config.fred, 2,
     cfg => fetchNextReleaseDate(cfg.seriesId, FRED_API_KEY),
   );
   const fredEntries = config.fred.map((cfg, i) => {
