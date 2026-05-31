@@ -252,10 +252,11 @@ function renderCapexTable(rows) {
     return bv - av;
   });
 
-  // Short headers + single-space gaps to keep total width <= ~33 chars so the
-  // <pre> block doesn't wrap on narrow mobile chat widths.
-  const headers = ['公司', 'Capex', '變動', '期間'];
-  const cols = ['name', 'value', 'delta', 'period'];
+  // Five short columns. Total width ~38-40 cols — wider than v1 (was 30)
+  // to use more of the Telegram bubble's horizontal real estate, narrower
+  // than the surrounding HTML text so we don't force the bubble to grow.
+  const headers = ['公司', 'Capex', 'QoQ', 'YoY', '期間'];
+  const cols = ['name', 'value', 'qoq', 'yoy', 'period'];
   const widths = headers.map((h, i) => Math.max(
     visualWidth(h),
     ...sorted.map(r => visualWidth(String(r[cols[i]] || '—'))),
@@ -266,13 +267,33 @@ function renderCapexTable(rows) {
     headers.map((h, i) => padTo(h, widths[i])).join(' '),
     sep,
     ...sorted.map(r => [
-      padTo(r.name || '—',   widths[0]),
-      padTo(r.value || '—',  widths[1], 'right'),
-      padTo(r.delta || '—',  widths[2], 'right'),
-      padTo(r.period || '—', widths[3]),
+      padTo(r.name   || '—', widths[0]),
+      padTo(r.value  || '—', widths[1], 'right'),
+      padTo(r.qoq    || '—', widths[2], 'right'),
+      padTo(r.yoy    || '—', widths[3], 'right'),
+      padTo(r.period || '—', widths[4]),
     ].join(' ')),
   ];
   return lines.join('\n');
+}
+
+// "2026-03-31" → "26Q1"; "2025-12-31" → "25Q4". Used for chart x-axis ticks
+// so MSFT (fiscal Q3 ending Mar) and AMZN (calendar Q1 ending Mar) share the
+// same tick at calendar Q1. Table column keeps each company's reported fp.
+function endDateToCalQ(end) {
+  if (!end || end.length < 7) return end || '—';
+  const yr = end.slice(2, 4);
+  const m  = parseInt(end.slice(5, 7), 10);
+  if (m <= 3)  return `${yr}Q1`;
+  if (m <= 6)  return `${yr}Q2`;
+  if (m <= 9)  return `${yr}Q3`;
+  return `${yr}Q4`;
+}
+
+function fmtDeltaPct(curr, base) {
+  if (!Number.isFinite(curr) || !Number.isFinite(base) || base === 0) return '—';
+  const pct = ((curr - base) / base) * 100;
+  return `${pct >= 0 ? '↑' : '↓'}${Math.abs(pct).toFixed(0)}%`;
 }
 
 // -- Main -------------------------------------------------------------------
@@ -404,34 +425,34 @@ async function main() {
 
   const capexRows = [];
   const capexHistorySeries = [];
-  const capexPalette = ['rgb(54,162,235)', 'rgb(255,99,132)', 'rgb(75,192,192)', 'rgb(255,159,64)', 'rgb(153,102,255)', 'rgb(255,205,86)'];
 
   for (let i = 0; i < publicEntries.length; i++) {
     const cfg = publicEntries[i];
     const r = capexResults[i];
     if (r.status !== 'fulfilled' || !r.value) {
-      capexRows.push({ name: cfg.company, value: '—', delta: '—', period: '抓取失敗', sortValue: NaN });
+      capexRows.push({ name: cfg.company, value: '—', qoq: '—', yoy: '—', period: '抓取失敗', sortValue: NaN });
       continue;
     }
     const v = r.value;
-    const deltaPct = (Number.isFinite(v.previousValue) && v.previousValue !== 0)
-      ? ((v.value - v.previousValue) / v.previousValue) * 100
-      : null;
-    const deltaStr = deltaPct == null ? '—' : `${deltaPct >= 0 ? '↑' : '↓'}${Math.abs(deltaPct).toFixed(0)}%`;
     capexRows.push({
       name:      cfg.company,
       value:     formatCapexB(v.value),
-      delta:     deltaStr,
+      qoq:       fmtDeltaPct(v.value, v.previousValue),
+      yoy:       fmtDeltaPct(v.value, v.yoyValue),
       period:    shortPeriodLabel(v.end, v.fp),
       sortValue: v.value,
     });
 
-    // Chartable history: convert to billions for readable y-axis.
+    // Chart series: date as YYYY-MM-DD for chronological sort, displayLabel
+    // as calendar-quarter label so mixed-fiscal-year companies align on the
+    // same x-axis ticks (MSFT FY-Q3 ending Mar and AMZN CY-Q1 ending Mar
+    // share the "26Q1" tick).
     if (Array.isArray(v.history) && v.history.length >= 2) {
       capexHistorySeries.push({
         label: cfg.company,
         points: v.history.map(h => ({
-          date: shortPeriodLabel(h.end, h.fp),
+          date: h.end,
+          displayLabel: endDateToCalQ(h.end),
           value: h.value / 1e9,
         })),
       });
@@ -443,12 +464,13 @@ async function main() {
       capexRows.push({
         name:      `${c.company} 🔒`,
         value:     formatCapexB(est.valueUSD),
-        delta:     '估算',
+        qoq:       '估算',
+        yoy:       '—',
         period:    est.period,
         sortValue: est.valueUSD,
       });
     } else {
-      capexRows.push({ name: `${c.company} 🔒`, value: '—', delta: '—', period: '待估算', sortValue: NaN });
+      capexRows.push({ name: `${c.company} 🔒`, value: '—', qoq: '—', yoy: '—', period: '待估算', sortValue: NaN });
     }
   }
 

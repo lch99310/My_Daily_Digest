@@ -83,24 +83,39 @@ export function buildSparklineUrl(series, opts = {}) {
 }
 
 // Combined chart of multiple series sharing the same x-axis. Useful for
-// CPI + Core PCE together, Fed Funds + 10Y together, etc.
+// CPI + Core PCE together, capex across multiple companies, etc.
+//
+// Each point: { date: 'YYYY-MM-DD', value, displayLabel? }
+// date is used for chronological sorting + dedup; displayLabel (optional)
+// is what shows on the x-axis tick (e.g. "26Q1"). Without displayLabel we
+// fall back to date.slice(0, 7) ("YYYY-MM").
 export function buildMultiSparklineUrl(seriesList, opts = {}) {
   const { title = '', width = 700, height = 280, yUnit = '' } = opts;
   if (!Array.isArray(seriesList) || seriesList.length === 0) return null;
   const valid = seriesList.filter(s => s.points && s.points.length > 0);
   if (valid.length === 0) return null;
 
-  const palette = ['rgb(54,162,235)', 'rgb(255,99,132)', 'rgb(75,192,192)', 'rgb(255,159,64)'];
+  const palette = ['rgb(54,162,235)', 'rgb(255,99,132)', 'rgb(75,192,192)', 'rgb(255,159,64)', 'rgb(153,102,255)', 'rgb(255,205,86)'];
 
-  // Build a common x-axis from the longest series.
-  const longest = valid.reduce((a, b) => b.points.length > a.points.length ? b : a);
-  const labels = longest.points.map(p => (p.date || '').slice(0, 7));
-  const labelIndex = new Map(labels.map((l, i) => [l, i]));
+  // Collect every (date, label) tuple across all series, then sort by date.
+  // This fixes the prior bug where only the "longest" series controlled the
+  // axis — companies with different fiscal-year alignment ended up with
+  // out-of-order or dropped points.
+  const dateToLabel = new Map();
+  for (const s of valid) {
+    for (const p of s.points) {
+      if (!p.date) continue;
+      dateToLabel.set(p.date, p.displayLabel || p.date.slice(0, 7));
+    }
+  }
+  const sortedDates = [...dateToLabel.keys()].sort();
+  const labels = sortedDates.map(d => dateToLabel.get(d));
+  const dateIndex = new Map(sortedDates.map((d, i) => [d, i]));
 
   const datasets = valid.map((s, i) => {
     const data = Array(labels.length).fill(null);
     for (const p of s.points) {
-      const idx = labelIndex.get((p.date || '').slice(0, 7));
+      const idx = dateIndex.get(p.date);
       if (idx != null) data[idx] = p.value;
     }
     return {
