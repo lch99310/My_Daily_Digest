@@ -53,6 +53,10 @@ function fcfPerShareFromYahoo(fund) {
 
 function mergeParams(ticker, quote, fund, treasury10y, globals) {
   const cache = ticker.cache || {};
+  // pegOverride per ticker > global default. Per-ticker values come from the
+  // sell-side framework (AI hyper-growth ≈ 2.0, cyclical memory ≈ 1.1, etc.)
+  // and are refreshed monthly by scripts/peg-review.mjs based on news + capex.
+  const pegMult = Number.isFinite(ticker.pegOverride) ? ticker.pegOverride : globals.pegMultiplier;
   return {
     price:        pickNumber(quote?.regularMarketPrice, quote?.postMarketPrice),
     prevClose:    pickNumber(quote?.regularMarketPreviousClose),
@@ -62,9 +66,22 @@ function mergeParams(ticker, quote, fund, treasury10y, globals) {
     growth:       pickNumber(fund?.growth5y, cache.growth5y),
     riskFree:     pickNumber(treasury10y, globals.fallbackRiskFree),
     erp:          globals.equityRiskPremium,
-    pegMult:      globals.pegMultiplier,
+    pegMult,
     horizon:      globals.horizonYears,
   };
+}
+
+// PEG change rationale fades after N days (default 3). After that the card
+// reverts to a clean look; rationale re-appears when monthly review actually
+// changes the value.
+function renderPegFooter(ticker, globals) {
+  const displayDays = globals.pegReview?.displayDays ?? 3;
+  if (!ticker.pegLastChange || !ticker.pegRationale) return '';
+  const changedAt = Date.parse(ticker.pegLastChange);
+  if (!Number.isFinite(changedAt)) return '';
+  const daysOld = (Date.now() - changedAt) / 86_400_000;
+  if (daysOld > displayDays) return '';
+  return `📐 PEG ${ticker.pegOverride} 調整 (${ticker.pegLastChange})：${ticker.pegRationale}`;
 }
 
 // -- Card rendering ---------------------------------------------------------
@@ -316,9 +333,10 @@ async function main() {
     const quote   = quotesBySymbol[ticker.symbol];
     const params  = mergeParams(ticker, quote, fundamentalsBySymbol[ticker.symbol], treasury10y, globals);
     const card    = renderCard(ticker, params, quote, globals.scenarios);
+    const peg     = renderPegFooter(ticker, globals);
     const news    = renderNewsBlock(newsSummaries[ticker.symbol]);
     const health  = renderHealthBlock(params);
-    return [card, news, health].filter(Boolean).join('\n\n');
+    return [card, peg, news, health].filter(Boolean).join('\n\n');
   });
 
   const footer = globals.scenarioFootnote

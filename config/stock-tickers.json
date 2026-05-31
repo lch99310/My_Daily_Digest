@@ -1,5 +1,5 @@
 {
-  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails or returns null fields. Refresh quarterly after each earnings report.",
+  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails. pegOverride is per-ticker — see Goldman/Wall Street category guide in pegRationale. Monthly auto-review (scripts/peg-review.mjs) updates pegOverride + pegLastChange + pegHistory based on 30d news + AI capex trends; card shows pegRationale for 3 days after change then hides it.",
   "globals": {
     "equityRiskPremium": 0.06,
     "pegMultiplier": 1.25,
@@ -10,77 +10,154 @@
       "bull": { "label": "牛市情境", "growthMult": 1.3, "pegMult": 1.2,  "erpMult": 0.85 },
       "bear": { "label": "熊市情境", "growthMult": 0.7, "pegMult": 0.8,  "erpMult": 1.15 }
     },
-    "scenarioFootnote": "情境假設：成長 ±30% · P/E 倍數 ±20% · 風險溢酬 ±15%；Beta 保持不變（beta 是系統性風險，非觀點）。"
+    "scenarioFootnote": "情境假設：成長 ±30% · P/E 倍數 ±20% · 風險溢酬 ±15%；Beta 保持不變（beta 是系統性風險，非觀點）。",
+    "pegReview": {
+      "displayDays": 3,
+      "maxMonthlyChange": 0.3,
+      "minConfidence": 0.7,
+      "absoluteFloor": 1.0,
+      "absoluteCeiling": 2.5
+    }
   },
   "tickers": [
     {
       "symbol": "NVDA",
       "exchange": "US",
       "zhName": "NVIDIA",
+      "searchKeywords": "NVDA OR NVIDIA",
       "description": "GPU 與 CUDA 平台龍頭；在 Agentic AI 時代是模型訓練與推論的事實標準算力供應者。",
+      "pegOverride": 2.0,
+      "pegRationale": "CUDA 護城河 + AI 基建龍頭，sell-side 一致給 premium",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 2.0, "reason": "初始設定：AI 純成長龍頭分類" }
+      ],
       "cache": { "beta": 2.12, "eps": 4.43, "fcfPerShare": 2.95, "growth5y": 0.32, "asOf": "2026-Q1" }
     },
     {
       "symbol": "AMD",
       "exchange": "US",
       "zhName": "Advanced Micro Devices",
+      "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR Instinct OR datacenter)",
       "description": "GPU/CPU 雙線挑戰者；MI300/350 系列在 Agentic AI 推論市場逐步啃下 NVIDIA 份額。",
+      "pegOverride": 1.8,
+      "pegRationale": "AI 挑戰者，搶 share 中但生態系與毛利仍落後 NVDA",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.8, "reason": "初始設定：AI 挑戰者分類" }
+      ],
       "cache": { "beta": 1.95, "eps": 2.78, "fcfPerShare": 1.85, "growth5y": 0.28, "asOf": "2026-Q1" }
     },
     {
       "symbol": "TSM",
       "exchange": "US",
       "zhName": "Taiwan Semiconductor",
+      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\"",
       "description": "全球最先進製程晶圓代工龍頭；幾乎所有 Agentic AI 加速器（NVIDIA、AMD、Google TPU）的最終承載者。",
+      "pegOverride": 1.4,
+      "pegRationale": "製程龍頭，但 cyclical + 地緣政治折扣壓低 multiple",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.4, "reason": "初始設定：AI 週期類分類" }
+      ],
       "cache": { "beta": 1.22, "eps": 7.45, "fcfPerShare": 4.20, "growth5y": 0.22, "asOf": "2026-Q1" }
     },
     {
       "symbol": "ARM",
       "exchange": "US",
       "zhName": "Arm Holdings",
+      "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\"",
       "description": "CPU 指令集授權商；邊緣 Agentic AI 與資料中心 Grace CPU 的核心 IP 供應方。",
+      "pegOverride": 2.0,
+      "pegRationale": "IP licensing + royalty 模型，極高營運槓桿",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 2.0, "reason": "初始設定：AI 純成長龍頭分類" }
+      ],
       "cache": { "beta": 1.65, "eps": 0.65, "fcfPerShare": 0.55, "growth5y": 0.25, "asOf": "2026-Q1" }
     },
     {
       "symbol": "MU",
       "exchange": "US",
       "zhName": "Micron Technology",
+      "searchKeywords": "Micron OR HBM3E OR HBM4",
       "description": "DRAM/HBM 三巨頭之一；HBM3E/HBM4 是 Agentic AI 訓練算力的記憶體瓶頸關鍵供應者。",
+      "pegOverride": 1.1,
+      "pegRationale": "記憶體最 cyclical，傳統估值給 1.0-1.2",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.1, "reason": "初始設定：AI 週期類分類" }
+      ],
       "cache": { "beta": 1.38, "eps": 8.20, "fcfPerShare": 3.10, "growth5y": 0.30, "asOf": "2026-Q1" }
     },
     {
       "symbol": "VRT",
       "exchange": "US",
       "zhName": "Vertiv Holdings",
+      "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\"",
       "description": "資料中心電源/冷卻基礎設施龍頭；Agentic AI 機房高密度部署的水冷與配電骨幹。",
+      "pegOverride": 1.7,
+      "pegRationale": "機房冷卻/配電龍頭，AI capex 直接受益",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.7, "reason": "初始設定：AI 基建/電力分類" }
+      ],
       "cache": { "beta": 1.55, "eps": 3.10, "fcfPerShare": 2.40, "growth5y": 0.25, "asOf": "2026-Q1" }
     },
     {
       "symbol": "GEV",
       "exchange": "US",
       "zhName": "GE Vernova",
+      "searchKeywords": "\"GE Vernova\" OR Vernova",
       "description": "燃氣輪機與電網設備龍頭；AI 算力需求暴增推動天然氣電廠新建與電網升級訂單。",
+      "pegOverride": 1.6,
+      "pegRationale": "燃氣輪機 + 電網，分拆後執行力觀察期",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.6, "reason": "初始設定：AI 基建/電力分類" }
+      ],
       "cache": { "beta": 1.45, "eps": 4.50, "fcfPerShare": 3.20, "growth5y": 0.20, "asOf": "2026-Q1" }
     },
     {
       "symbol": "ETN",
       "exchange": "US",
       "zhName": "Eaton Corp",
+      "searchKeywords": "\"Eaton Corp\" OR Eaton Corporation",
       "description": "電力管理與配電設備跨國龍頭；資料中心 UPS、母線槽、開關櫃的最大受惠者之一。",
+      "pegOverride": 1.7,
+      "pegRationale": "quality compounder，AI 電力主受益",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.7, "reason": "初始設定：AI 基建/電力分類" }
+      ],
       "cache": { "beta": 1.10, "eps": 11.50, "fcfPerShare": 9.80, "growth5y": 0.13, "asOf": "2026-Q1" }
     },
     {
       "symbol": "VST",
       "exchange": "US",
       "zhName": "Vistra Corp",
+      "searchKeywords": "\"Vistra Corp\" OR \"Vistra Energy\"",
       "description": "獨立發電商；核能機隊（Comanche Peak 等）成為 AI 資料中心直購電 (PPA) 的稀缺資產。",
+      "pegOverride": 1.5,
+      "pegRationale": "獨立發電 + 核電，AI PPA 受益但 IPP 屬性",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.5, "reason": "初始設定：AI 基建/電力分類" }
+      ],
       "cache": { "beta": 1.30, "eps": 5.80, "fcfPerShare": 4.50, "growth5y": 0.18, "asOf": "2026-Q1" }
     },
     {
       "symbol": "CEG",
       "exchange": "US",
       "zhName": "Constellation Energy",
+      "searchKeywords": "\"Constellation Energy\" OR Constellation nuclear",
       "description": "美國最大核電廠運營商；與 Microsoft 等大廠簽長期 PPA，是 AI 24×7 無碳電力的代表標的。",
+      "pegOverride": 1.5,
+      "pegRationale": "最大核電業者，MSFT PPA 溢價但受監管",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.5, "reason": "初始設定：AI 基建/電力分類" }
+      ],
       "cache": { "beta": 1.25, "eps": 9.20, "fcfPerShare": 6.50, "growth5y": 0.16, "asOf": "2026-Q1" }
     }
   ]
