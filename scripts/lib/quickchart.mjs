@@ -11,9 +11,12 @@ const TIMEOUT = 10_000;
 // and rock-solid. Falls back to the raw GET URL if the POST itself fails.
 export async function shortenChartUrl(longUrl) {
   try {
-    // Extract chart config from the long URL
+    // Extract chart config from the long URL. URLSearchParams.get() already
+    // percent-decodes — calling decodeURIComponent on the result would be a
+    // double-decode and throws "URI malformed" on any literal `%` in the
+    // JSON (e.g. callback strings ending in '%').
     const u = new URL(longUrl);
-    const config = JSON.parse(decodeURIComponent(u.searchParams.get('c')));
+    const config = JSON.parse(u.searchParams.get('c'));
     const width  = u.searchParams.get('w');
     const height = u.searchParams.get('h');
 
