@@ -6,10 +6,16 @@ const UA = 'My Daily Digest macro-digest contact@example.com';
 const TIMEOUT = 12_000;
 
 const CAPEX_CONCEPTS = [
+  // us-gaap variants — companies pick whichever fits their disclosure style.
+  // Amazon historically reported under PaymentsToAcquirePropertyPlantAnd-
+  // Equipment but later split capex into multiple concepts incl. finance
+  // leases; we pool data from every concept and pick the newest.
   'PaymentsToAcquirePropertyPlantAndEquipment',
-  'PaymentsForCapitalImprovements',
   'PaymentsToAcquireProductiveAssets',
+  'PaymentsForCapitalImprovements',
   'PaymentsToAcquireMachineryAndEquipment',
+  'PaymentsToAcquireOtherProductiveAssets',
+  'PaymentsForPropertyPlantAndEquipment',
 ];
 
 // Forms that legitimately disclose periodic capex via XBRL.
@@ -33,10 +39,19 @@ async function getJson(url) {
 }
 
 // Returns { value, end, fp, fy, form, previousValue, previousEnd, periodKind,
-//           history } where `history` is an array of {date, value, fp, end}
-// for the most recent N periods (oldest → newest) usable for charting.
+//           yoyValue, yoyEnd, history } where `history` is oldest → newest
+// last N periods usable for charting; each item has {date,end,fp,value}.
+//
+// Strategy: instead of trying concepts one-by-one and stopping at the first
+// hit (which returned stale 2017 data for Amazon — they later split capex
+// into multiple concepts), pool entries from ALL concepts and pick the
+// newest. Same period reported under multiple concepts dedupes by `filed`.
 export async function fetchLatestQuarterlyCapex(cik, { historyCount = 6 } = {}) {
   const padded = String(cik).padStart(10, '0');
+
+  // (end + periodKind) → entry; later filings or concepts win on equal key.
+  const byKey = new Map();
+  let conceptsHit = 0;
 
   for (const concept of CAPEX_CONCEPTS) {
     try {
@@ -44,8 +59,6 @@ export async function fetchLatestQuarterlyCapex(cik, { historyCount = 6 } = {}) 
       const data = await getJson(url);
       const usd = data.units?.USD || [];
 
-      // Dedupe by (end, periodKind) keeping the newest `filed` (amendments win).
-      const byEnd = new Map();
       for (const u of usd) {
         if (!u.fp) continue;
         if (!ACCEPTED_FORMS.has(u.form)) continue;
@@ -53,46 +66,59 @@ export async function fetchLatestQuarterlyCapex(cik, { historyCount = 6 } = {}) 
         const isFY = u.fp === 'FY';
         if (!isQ && !isFY) continue;
         const key = `${u.end}|${isQ ? 'Q' : 'FY'}`;
-        const prev = byEnd.get(key);
-        if (!prev || u.filed > prev.filed) byEnd.set(key, { ...u, periodKind: isQ ? 'Q' : 'FY' });
+        const prev = byKey.get(key);
+        // Prefer later filings; if same filing date, prefer the concept that
+        // appears earlier in CAPEX_CONCEPTS (us-gaap canonical name first).
+        if (!prev || u.filed > prev.filed) {
+          byKey.set(key, { ...u, periodKind: isQ ? 'Q' : 'FY', concept });
+        }
       }
-
-      // Prefer quarterly; if none, fall back to annual.
-      const quarterly = [...byEnd.values()].filter(u => u.periodKind === 'Q')
-        .sort((a, b) => b.end.localeCompare(a.end));
-      const annual = [...byEnd.values()].filter(u => u.periodKind === 'FY')
-        .sort((a, b) => b.end.localeCompare(a.end));
-
-      const pool = quarterly.length > 0 ? quarterly : annual;
-      if (pool.length === 0) continue;
-
-      const latest = pool[0];
-      const prev   = pool[1];
-
-      // history: oldest → newest, last N periods.
-      const history = pool
-        .slice(0, historyCount)
-        .reverse()
-        .map(u => ({ date: u.end, value: u.val, fp: u.fp, end: u.end }));
-
-      return {
-        value: latest.val,
-        end: latest.end,
-        fp: latest.fp,
-        fy: latest.fy,
-        form: latest.form,
-        filed: latest.filed,
-        concept,
-        periodKind: latest.periodKind,
-        previousValue: prev?.val,
-        previousEnd: prev?.end,
-        history,
-      };
+      conceptsHit++;
     } catch (err) {
-      console.warn(`  CIK ${padded} ${concept}: ${err.message}`);
+      // 404 = company doesn't report under this concept; that's fine.
+      if (!String(err.message).includes('404')) {
+        console.warn(`  CIK ${padded} ${concept}: ${err.message}`);
+      }
     }
   }
-  return null;
+
+  if (byKey.size === 0) return null;
+
+  // Prefer quarterly; if none, fall back to annual.
+  const all = [...byKey.values()];
+  const quarterly = all.filter(u => u.periodKind === 'Q').sort((a, b) => b.end.localeCompare(a.end));
+  const annual    = all.filter(u => u.periodKind === 'FY').sort((a, b) => b.end.localeCompare(a.end));
+
+  const pool = quarterly.length > 0 ? quarterly : annual;
+  if (pool.length === 0) return null;
+
+  const latest = pool[0];
+  const prev   = pool[1];
+
+  // YoY counterpart: for quarterly, 4 periods back; for annual, 1 period back.
+  const yoyOffset = latest.periodKind === 'Q' ? 4 : 1;
+  const yoy = pool[yoyOffset];
+
+  const history = pool
+    .slice(0, historyCount)
+    .reverse()
+    .map(u => ({ date: u.end, end: u.end, value: u.val, fp: u.fp }));
+
+  return {
+    value: latest.val,
+    end: latest.end,
+    fp: latest.fp,
+    fy: latest.fy,
+    form: latest.form,
+    filed: latest.filed,
+    concept: latest.concept,
+    periodKind: latest.periodKind,
+    previousValue: prev?.val,
+    previousEnd: prev?.end,
+    yoyValue: yoy?.val,
+    yoyEnd: yoy?.end,
+    history,
+  };
 }
 
 export function formatCapexB(usd) {
