@@ -1,5 +1,5 @@
 {
-  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails. pegOverride is per-ticker — see Goldman/Wall Street category guide in pegRationale. Monthly auto-review (scripts/peg-review.mjs) updates pegOverride + pegLastChange + pegHistory based on 30d news + AI capex trends; card shows pegRationale for 3 days after change then hides it.",
+  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails. pegOverride is per-ticker — calibrated against the v4 Agentic AI supply-chain analysis (Top 10 winners + 11-25 補位 + upstream mining strategic beneficiaries). Monthly auto-review (scripts/peg-review.mjs) updates pegOverride + pegLastChange + pegHistory based on 30d news + AI capex trends; card shows pegRationale for 3 days after change then hides it.",
   "globals": {
     "equityRiskPremium": 0.06,
     "pegMultiplier": 1.25,
@@ -24,83 +24,41 @@
       "symbol": "NVDA",
       "exchange": "US",
       "zhName": "NVIDIA",
-      "searchKeywords": "NVDA OR NVIDIA",
-      "description": "GPU 與 CUDA 平台龍頭；在 Agentic AI 時代是模型訓練與推論的事實標準算力供應者。",
+      "searchKeywords": "NVDA OR NVIDIA OR Blackwell OR Rubin",
+      "description": "v4 Top 1 全棧霸主；CUDA + Blackwell/Rubin GPU + BlueField DPU + Vera CPU + CMX KV-offload；2026 投資 Marvell/Lumentum/Coherent $60 億對應鎵管制。",
       "pegOverride": 2.0,
-      "pegRationale": "CUDA 護城河 + AI 基建龍頭，sell-side 一致給 premium",
+      "pegRationale": "v4 Top 1：唯一全棧、CUDA 護城河、Vera Rubin Ultra 2027 單櫃 600kW",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 2.0, "reason": "初始設定：AI 純成長龍頭分類" }
+        { "date": "2026-05-30", "peg": 2.0, "reason": "v4 重校準：Top 1 全棧霸主分類" }
       ],
       "cache": { "beta": 2.12, "eps": 4.43, "fcfPerShare": 2.95, "growth5y": 0.32, "asOf": "2026-Q1" }
-    },
-    {
-      "symbol": "AMD",
-      "exchange": "US",
-      "zhName": "Advanced Micro Devices",
-      "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR Instinct OR datacenter)",
-      "description": "GPU/CPU 雙線挑戰者；MI300/350 系列在 Agentic AI 推論市場逐步啃下 NVIDIA 份額。",
-      "pegOverride": 1.8,
-      "pegRationale": "AI 挑戰者，搶 share 中但生態系與毛利仍落後 NVDA",
-      "pegLastChange": "2026-05-30",
-      "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.8, "reason": "初始設定：AI 挑戰者分類" }
-      ],
-      "cache": { "beta": 1.95, "eps": 2.78, "fcfPerShare": 1.85, "growth5y": 0.28, "asOf": "2026-Q1" }
     },
     {
       "symbol": "TSM",
       "exchange": "US",
       "zhName": "Taiwan Semiconductor",
-      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\"",
-      "description": "全球最先進製程晶圓代工龍頭；幾乎所有 Agentic AI 加速器（NVIDIA、AMD、Google TPU）的最終承載者。",
-      "pegOverride": 1.4,
-      "pegRationale": "製程龍頭，但 cyclical + 地緣政治折扣壓低 multiple",
+      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\" OR CoWoS OR N2",
+      "description": "v4 Top 2 製造瓶頸；CoWoS 包下 NVIDIA 50%+；N2 製程 2026H2 量產；全球 95%+ AI 加速器在此生產。氦氣短缺是新威脅。",
+      "pegOverride": 1.5,
+      "pegRationale": "v4 Top 2：最低中國 IT 衝擊；製程護城河；氦氣 EUV 風險短期可承受",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.4, "reason": "初始設定：AI 週期類分類" }
+        { "date": "2026-05-30", "peg": 1.5, "reason": "v4 重校準：Top 2 製造瓶頸；從 1.4 上修反映製程獨占性" }
       ],
       "cache": { "beta": 1.22, "eps": 7.45, "fcfPerShare": 4.20, "growth5y": 0.22, "asOf": "2026-Q1" }
-    },
-    {
-      "symbol": "ARM",
-      "exchange": "US",
-      "zhName": "Arm Holdings",
-      "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\"",
-      "description": "CPU 指令集授權商；邊緣 Agentic AI 與資料中心 Grace CPU 的核心 IP 供應方。",
-      "pegOverride": 2.0,
-      "pegRationale": "IP licensing + royalty 模型，極高營運槓桿",
-      "pegLastChange": "2026-05-30",
-      "pegHistory": [
-        { "date": "2026-05-30", "peg": 2.0, "reason": "初始設定：AI 純成長龍頭分類" }
-      ],
-      "cache": { "beta": 1.65, "eps": 0.65, "fcfPerShare": 0.55, "growth5y": 0.25, "asOf": "2026-Q1" }
-    },
-    {
-      "symbol": "MU",
-      "exchange": "US",
-      "zhName": "Micron Technology",
-      "searchKeywords": "Micron OR HBM3E OR HBM4",
-      "description": "DRAM/HBM 三巨頭之一；HBM3E/HBM4 是 Agentic AI 訓練算力的記憶體瓶頸關鍵供應者。",
-      "pegOverride": 1.1,
-      "pegRationale": "記憶體最 cyclical，傳統估值給 1.0-1.2",
-      "pegLastChange": "2026-05-30",
-      "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.1, "reason": "初始設定：AI 週期類分類" }
-      ],
-      "cache": { "beta": 1.38, "eps": 8.20, "fcfPerShare": 3.10, "growth5y": 0.30, "asOf": "2026-Q1" }
     },
     {
       "symbol": "VRT",
       "exchange": "US",
       "zhName": "Vertiv Holdings",
-      "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\"",
-      "description": "資料中心電源/冷卻基礎設施龍頭；Agentic AI 機房高密度部署的水冷與配電骨幹。",
-      "pegOverride": 1.7,
-      "pegRationale": "機房冷卻/配電龍頭，AI capex 直接受益",
+      "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\" OR Liebert",
+      "description": "v4 Top 3 機房 OT 王；backlog $15B、Q1 EPS +83%、Q4 訂單 +252%；同時吃訓練端 + 推理端；600kW 機櫃直接受益最大。",
+      "pegOverride": 1.8,
+      "pegRationale": "v4 Top 3 super winner 完全免疫；上修反映 backlog 與 Q1 EPS +83% 強執行力",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.7, "reason": "初始設定：AI 基建/電力分類" }
+        { "date": "2026-05-30", "peg": 1.8, "reason": "v4 重校準：Top 3 super winner；從 1.7 上修反映 600kW 機櫃時代受益最大" }
       ],
       "cache": { "beta": 1.55, "eps": 3.10, "fcfPerShare": 2.40, "growth5y": 0.25, "asOf": "2026-Q1" }
     },
@@ -108,27 +66,125 @@
       "symbol": "GEV",
       "exchange": "US",
       "zhName": "GE Vernova",
-      "searchKeywords": "\"GE Vernova\" OR Vernova",
-      "description": "燃氣輪機與電網設備龍頭；AI 算力需求暴增推動天然氣電廠新建與電網升級訂單。",
-      "pegOverride": 1.6,
-      "pegRationale": "燃氣輪機 + 電網，分拆後執行力觀察期",
+      "searchKeywords": "\"GE Vernova\" OR Vernova OR \"gas turbine\"",
+      "description": "v4 Top 4 AI 電力鏈最大贏家；backlog $163B (Q1 2026)、單季新簽 21GW；燃氣輪機 + 變壓器雙引擎。",
+      "pegOverride": 1.8,
+      "pegRationale": "v4 Top 4 super winner 完全免疫；上修反映 $163B backlog 與 24GW 燃氣輪機產能擴張",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.6, "reason": "初始設定：AI 基建/電力分類" }
+        { "date": "2026-05-30", "peg": 1.8, "reason": "v4 重校準：Top 4 super winner；從 1.6 上修反映訂單能見度延伸至 2030+" }
       ],
       "cache": { "beta": 1.45, "eps": 4.50, "fcfPerShare": 3.20, "growth5y": 0.20, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "ARM",
+      "exchange": "US",
+      "zhName": "Arm Holdings",
+      "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\" OR \"AGI CPU\" OR Neoverse",
+      "description": "v4 Top 5 結構性贏家；AGI CPU 2H26、Meta 為首客戶；2031 目標 $250 億營收 6 倍成長；DC CPU 容量需 4×/GW。",
+      "pegOverride": 2.0,
+      "pegRationale": "v4 Top 5 super winner；IP licensing 高槓桿 + AGI CPU 路線清晰",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 2.0, "reason": "v4 重校準：Top 5 結構性贏家；維持 2.0" }
+      ],
+      "cache": { "beta": 1.65, "eps": 0.65, "fcfPerShare": 0.55, "growth5y": 0.25, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "AMD",
+      "exchange": "US",
+      "zhName": "Advanced Micro Devices",
+      "searchKeywords": "AMD AND (\"Lisa Su\" OR MI300 OR MI350 OR MI400 OR Instinct)",
+      "description": "v4 Top 6 唯一全棧抗 NVIDIA；MI400 432GB HBM4 40 PFLOPS FP4 在 DeepSeek V4 長上下文 + 多 agent 反而利多；EPYC 27.2% 市占。",
+      "pegOverride": 1.8,
+      "pegRationale": "v4 Top 6：唯一全棧 CPU+GPU+DPU+SW 抗 NVIDIA；維持",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.8, "reason": "v4 重校準：Top 6 大贏家；維持 1.8" }
+      ],
+      "cache": { "beta": 1.95, "eps": 2.78, "fcfPerShare": 1.85, "growth5y": 0.28, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "FCX",
+      "exchange": "US",
+      "zhName": "Freeport-McMoRan",
+      "searchKeywords": "\"Freeport-McMoRan\" OR FCX OR Grasberg",
+      "description": "v4 新進 Top 8；全球最大非中國銅生產商（除 Codelco）；2030 AI DC 需銅 33-50 萬噸佔 DC 銅需求 58%；S&P Global 2040 預估全球銅赤字 1000 萬噸。",
+      "pegOverride": 1.5,
+      "pegRationale": "v4 Top 8 新進：AI DC 最大宗金屬，結構性赤字但 commodity 性質給折扣",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.5, "reason": "v4 新加入：Top 8 銅龍頭" }
+      ],
+      "cache": { "beta": 2.10, "eps": 2.50, "fcfPerShare": 1.80, "growth5y": 0.20, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "CEG",
+      "exchange": "US",
+      "zhName": "Constellation Energy",
+      "searchKeywords": "\"Constellation Energy\" OR \"Three Mile Island\" OR \"nuclear PPA\"",
+      "description": "v4 Top 10 核能 firm power 王；22 座反應堆 ~33GW、95% capacity factor；TMI 重啟 + MSFT 20 年 PPA；24/7 firm power 對 hyperscaler 不可替代。",
+      "pegOverride": 1.6,
+      "pegRationale": "v4 Top 10 完全免疫；上修反映 24/7 firm power 唯一解的稀缺溢價",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.6, "reason": "v4 重校準：Top 10 super winner；從 1.5 上修" }
+      ],
+      "cache": { "beta": 1.25, "eps": 9.20, "fcfPerShare": 6.50, "growth5y": 0.16, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "MU",
+      "exchange": "US",
+      "zhName": "Micron Technology",
+      "searchKeywords": "Micron OR HBM3E OR HBM4 OR CHIPS Act memory",
+      "description": "v4 #15 美國本土唯一 HBM+DRAM+NAND 垂直整合；CHIPS Act 保護；HBM 市場 2028 達 $1000 億；2026 HBM 產能售罄。",
+      "pegOverride": 1.3,
+      "pegRationale": "v4 #15：美國垂直整合 + CHIPS Act 保護，較低中國衝擊；從 1.1 上修",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.3, "reason": "v4 重校準：從一般 memory cyclical 升級到 strategic 美國本土供應" }
+      ],
+      "cache": { "beta": 1.38, "eps": 8.20, "fcfPerShare": 3.10, "growth5y": 0.30, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "CLF",
+      "exchange": "US",
+      "zhName": "Cleveland-Cliffs",
+      "searchKeywords": "\"Cleveland-Cliffs\" OR \"GOES steel\" OR \"electrical steel\" OR Weirton",
+      "description": "v4 #16 新進；美國本土唯一 GOES（晶粒取向電工鋼）生產商；2026H1 Weirton 變壓器廠 $150M 上線；變壓器荒（5 年交期）直接受益。",
+      "pegOverride": 1.6,
+      "pegRationale": "v4 #16 新進：美國 GOES 獨家 + 變壓器荒結構性受益；完全免疫中國衝擊",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.6, "reason": "v4 新加入：GOES 美國本土唯一" }
+      ],
+      "cache": { "beta": 2.50, "eps": 0.50, "fcfPerShare": 0.80, "growth5y": 0.15, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "LYC.AX",
+      "exchange": "AU",
+      "zhName": "Lynas Rare Earths",
+      "searchKeywords": "Lynas OR \"rare earth\" OR Nd-Fe-B",
+      "description": "v4 #18 新進；中國以外最大稀土生產商；澳洲 Mt Weld 礦 + 馬來西亞冶煉垂直整合；中國 2025/4 重稀土管制未鬆綁，戰略受益持續。",
+      "pegOverride": 1.7,
+      "pegRationale": "v4 #18 戰略受益：非中國最大稀土 + 中國管制溢價；垂直整合澳洲+大馬",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.7, "reason": "v4 新加入：中國以外最大稀土生產商" }
+      ],
+      "cache": { "beta": 1.80, "eps": 0.15, "fcfPerShare": 0.10, "growth5y": 0.30, "asOf": "2026-Q1" }
     },
     {
       "symbol": "ETN",
       "exchange": "US",
       "zhName": "Eaton Corp",
-      "searchKeywords": "\"Eaton Corp\" OR Eaton Corporation",
-      "description": "電力管理與配電設備跨國龍頭；資料中心 UPS、母線槽、開關櫃的最大受惠者之一。",
+      "searchKeywords": "\"Eaton Corp\" OR \"Eaton Corporation\" OR \"Boyd Thermal\"",
+      "description": "v4 #19 完全免疫；UPS + 變壓器 + 液冷（Boyd Thermal $9.5B 收購）三引擎；南卡變壓器廠 2027 上線。",
       "pegOverride": 1.7,
-      "pegRationale": "quality compounder，AI 電力主受益",
+      "pegRationale": "v4 #19 quality compounder 完全免疫；Boyd Thermal 強化液冷布局；維持",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.7, "reason": "初始設定：AI 基建/電力分類" }
+        { "date": "2026-05-30", "peg": 1.7, "reason": "v4 重校準：#19 完全免疫；維持 1.7" }
       ],
       "cache": { "beta": 1.10, "eps": 11.50, "fcfPerShare": 9.80, "growth5y": 0.13, "asOf": "2026-Q1" }
     },
@@ -136,29 +192,57 @@
       "symbol": "VST",
       "exchange": "US",
       "zhName": "Vistra Corp",
-      "searchKeywords": "\"Vistra Corp\" OR \"Vistra Energy\"",
-      "description": "獨立發電商；核能機隊（Comanche Peak 等）成為 AI 資料中心直購電 (PPA) 的稀缺資產。",
+      "searchKeywords": "\"Vistra Corp\" OR \"Vistra Energy\" OR \"Comanche Peak\"",
+      "description": "獨立發電商 + 核電；Comanche Peak 核電機隊成為 AI 直購電（PPA）稀缺資產；類 CEG 但 IPP 屬性折扣。",
       "pegOverride": 1.5,
-      "pegRationale": "獨立發電 + 核電，AI PPA 受益但 IPP 屬性",
+      "pegRationale": "AI PPA 受益但 IPP 屬性 vs CEG 純核電溢價較低；維持",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.5, "reason": "初始設定：AI 基建/電力分類" }
+        { "date": "2026-05-30", "peg": 1.5, "reason": "v4 重校準：類 CEG 但折扣；維持 1.5" }
       ],
       "cache": { "beta": 1.30, "eps": 5.80, "fcfPerShare": 4.50, "growth5y": 0.18, "asOf": "2026-Q1" }
     },
     {
-      "symbol": "CEG",
+      "symbol": "BHP",
       "exchange": "US",
-      "zhName": "Constellation Energy",
-      "searchKeywords": "\"Constellation Energy\" OR Constellation nuclear",
-      "description": "美國最大核電廠運營商；與 Microsoft 等大廠簽長期 PPA，是 AI 24×7 無碳電力的代表標的。",
-      "pegOverride": 1.5,
-      "pegRationale": "最大核電業者，MSFT PPA 溢價但受監管",
+      "zhName": "BHP Group",
+      "searchKeywords": "\"BHP Group\" OR BHP Billiton OR Escondida OR \"OZ Minerals\"",
+      "description": "v4 銅鏈成員；智利 Escondida + Spence + 收購 OZ Minerals；多元化礦業（銅 + 鐵 + 鎳）；NYSE ADR。",
+      "pegOverride": 1.3,
+      "pegRationale": "多元化礦業 diversified discount；AI 曝險間接但銅 + 鎳雙受益",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.5, "reason": "初始設定：AI 基建/電力分類" }
+        { "date": "2026-05-30", "peg": 1.3, "reason": "v4 新加入：多元化礦業折扣" }
       ],
-      "cache": { "beta": 1.25, "eps": 9.20, "fcfPerShare": 6.50, "growth5y": 0.16, "asOf": "2026-Q1" }
+      "cache": { "beta": 0.95, "eps": 5.00, "fcfPerShare": 3.50, "growth5y": 0.08, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "RIO",
+      "exchange": "US",
+      "zhName": "Rio Tinto",
+      "searchKeywords": "\"Rio Tinto\" OR Kennecott OR \"Oyu Tolgoi\"",
+      "description": "v4 銅鏈成員；Kennecott (美國) + Oyu Tolgoi (蒙古) 銅礦；多元化礦業（銅 + 鐵 + 鋁）；NYSE ADR。",
+      "pegOverride": 1.3,
+      "pegRationale": "類 BHP 多元化礦業折扣；銅 + 鐵 + 鋁三引擎",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.3, "reason": "v4 新加入：多元化礦業折扣" }
+      ],
+      "cache": { "beta": 0.85, "eps": 7.50, "fcfPerShare": 6.00, "growth5y": 0.07, "asOf": "2026-Q1" }
+    },
+    {
+      "symbol": "PLS.AX",
+      "exchange": "AU",
+      "zhName": "Pilbara Minerals",
+      "searchKeywords": "\"Pilbara Minerals\" OR Pilgangoora OR lithium",
+      "description": "v4 鋰鏈純成長股；澳洲 Pilgangoora 礦；Tesla Megapack + BBU 儲能 + 微電網需求驅動；戰略受益但鋰價 cyclical。",
+      "pegOverride": 1.4,
+      "pegRationale": "v4 戰略受益：純鋰礦 + 西方供應鏈安全；但鋰價 cyclical 限制溢價",
+      "pegLastChange": "2026-05-30",
+      "pegHistory": [
+        { "date": "2026-05-30", "peg": 1.4, "reason": "v4 新加入：純鋰礦戰略受益" }
+      ],
+      "cache": { "beta": 2.40, "eps": 0.05, "fcfPerShare": 0.10, "growth5y": 0.35, "asOf": "2026-Q1" }
     }
   ]
 }
