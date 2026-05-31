@@ -6,16 +6,31 @@
     "horizonYears": 5,
     "fallbackRiskFree": 0.043,
     "scenarios": {
-      "base": { "label": "合理價",   "growthMult": 1.0, "pegMult": 1.0,  "erpMult": 1.0 },
-      "bull": { "label": "牛市情境", "growthMult": 1.3, "pegMult": 1.2,  "erpMult": 0.85 },
-      "bear": { "label": "熊市情境", "growthMult": 0.7, "pegMult": 0.8,  "erpMult": 1.15 }
+      "base": {
+        "label": "合理價",
+        "growthMult": 1,
+        "pegMult": 1,
+        "erpMult": 1
+      },
+      "bull": {
+        "label": "牛市情境",
+        "growthMult": 1.3,
+        "pegMult": 1.2,
+        "erpMult": 0.85
+      },
+      "bear": {
+        "label": "熊市情境",
+        "growthMult": 0.7,
+        "pegMult": 0.8,
+        "erpMult": 1.15
+      }
     },
     "scenarioFootnote": "情境假設：成長 ±30% · P/E 倍數 ±20% · 風險溢酬 ±15%；Beta 保持不變（beta 是系統性風險，非觀點）。",
     "pegReview": {
       "displayDays": 3,
       "maxMonthlyChange": 0.3,
       "minConfidence": 0.7,
-      "absoluteFloor": 1.0,
+      "absoluteFloor": 1,
       "absoluteCeiling": 2.5
     }
   },
@@ -26,13 +41,23 @@
       "zhName": "NVIDIA",
       "searchKeywords": "NVDA OR NVIDIA",
       "description": "GPU 與 CUDA 平台龍頭；在 Agentic AI 時代是模型訓練與推論的事實標準算力供應者。",
-      "pegOverride": 2.0,
+      "pegOverride": 2,
       "pegRationale": "CUDA 護城河 + AI 基建龍頭，sell-side 一致給 premium",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 2.0, "reason": "初始設定：AI 純成長龍頭分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 2,
+          "reason": "初始設定：AI 純成長龍頭分類"
+        }
       ],
-      "cache": { "beta": 2.12, "eps": 4.43, "fcfPerShare": 2.95, "growth5y": 0.32, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 2.12,
+        "eps": 4.43,
+        "fcfPerShare": 2.95,
+        "growth5y": 0.32,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "AMD",
@@ -44,9 +69,19 @@
       "pegRationale": "AI 挑戰者，搶 share 中但生態系與毛利仍落後 NVDA",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.8, "reason": "初始設定：AI 挑戰者分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.8,
+          "reason": "初始設定：AI 挑戰者分類"
+        }
       ],
-      "cache": { "beta": 1.95, "eps": 2.78, "fcfPerShare": 1.85, "growth5y": 0.28, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.95,
+        "eps": 2.78,
+        "fcfPerShare": 1.85,
+        "growth5y": 0.28,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "TSM",
@@ -58,9 +93,19 @@
       "pegRationale": "製程龍頭，但 cyclical + 地緣政治折扣壓低 multiple",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.4, "reason": "初始設定：AI 週期類分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.4,
+          "reason": "初始設定：AI 週期類分類"
+        }
       ],
-      "cache": { "beta": 1.22, "eps": 7.45, "fcfPerShare": 4.20, "growth5y": 0.22, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.22,
+        "eps": 7.45,
+        "fcfPerShare": 4.2,
+        "growth5y": 0.22,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "ARM",
@@ -68,13 +113,23 @@
       "zhName": "Arm Holdings",
       "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\"",
       "description": "CPU 指令集授權商；邊緣 Agentic AI 與資料中心 Grace CPU 的核心 IP 供應方。",
-      "pegOverride": 2.0,
+      "pegOverride": 2,
       "pegRationale": "IP licensing + royalty 模型，極高營運槓桿",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 2.0, "reason": "初始設定：AI 純成長龍頭分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 2,
+          "reason": "初始設定：AI 純成長龍頭分類"
+        }
       ],
-      "cache": { "beta": 1.65, "eps": 0.65, "fcfPerShare": 0.55, "growth5y": 0.25, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.65,
+        "eps": 0.65,
+        "fcfPerShare": 0.55,
+        "growth5y": 0.25,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "MU",
@@ -82,13 +137,28 @@
       "zhName": "Micron Technology",
       "searchKeywords": "Micron OR HBM3E OR HBM4",
       "description": "DRAM/HBM 三巨頭之一；HBM3E/HBM4 是 Agentic AI 訓練算力的記憶體瓶頸關鍵供應者。",
-      "pegOverride": 1.1,
-      "pegRationale": "記憶體最 cyclical，傳統估值給 1.0-1.2",
-      "pegLastChange": "2026-05-30",
+      "pegOverride": 1.2,
+      "pegRationale": "HBM需求強勁，記憶體週期性減弱，新聞正面支撐小幅調升估值倍數。",
+      "pegLastChange": "2026-05-31",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.1, "reason": "初始設定：AI 週期類分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.1,
+          "reason": "初始設定：AI 週期類分類"
+        },
+        {
+          "date": "2026-05-31",
+          "peg": 1.2,
+          "reason": "HBM需求強勁，記憶體週期性減弱，新聞正面支撐小幅調升估值倍數。"
+        }
       ],
-      "cache": { "beta": 1.38, "eps": 8.20, "fcfPerShare": 3.10, "growth5y": 0.30, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.38,
+        "eps": 8.2,
+        "fcfPerShare": 3.1,
+        "growth5y": 0.3,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "VRT",
@@ -100,9 +170,19 @@
       "pegRationale": "機房冷卻/配電龍頭，AI capex 直接受益",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.7, "reason": "初始設定：AI 基建/電力分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.7,
+          "reason": "初始設定：AI 基建/電力分類"
+        }
       ],
-      "cache": { "beta": 1.55, "eps": 3.10, "fcfPerShare": 2.40, "growth5y": 0.25, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.55,
+        "eps": 3.1,
+        "fcfPerShare": 2.4,
+        "growth5y": 0.25,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "GEV",
@@ -114,9 +194,19 @@
       "pegRationale": "燃氣輪機 + 電網，分拆後執行力觀察期",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.6, "reason": "初始設定：AI 基建/電力分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.6,
+          "reason": "初始設定：AI 基建/電力分類"
+        }
       ],
-      "cache": { "beta": 1.45, "eps": 4.50, "fcfPerShare": 3.20, "growth5y": 0.20, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.45,
+        "eps": 4.5,
+        "fcfPerShare": 3.2,
+        "growth5y": 0.2,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "ETN",
@@ -128,9 +218,19 @@
       "pegRationale": "quality compounder，AI 電力主受益",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.7, "reason": "初始設定：AI 基建/電力分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.7,
+          "reason": "初始設定：AI 基建/電力分類"
+        }
       ],
-      "cache": { "beta": 1.10, "eps": 11.50, "fcfPerShare": 9.80, "growth5y": 0.13, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.1,
+        "eps": 11.5,
+        "fcfPerShare": 9.8,
+        "growth5y": 0.13,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "VST",
@@ -142,9 +242,19 @@
       "pegRationale": "獨立發電 + 核電，AI PPA 受益但 IPP 屬性",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.5, "reason": "初始設定：AI 基建/電力分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.5,
+          "reason": "初始設定：AI 基建/電力分類"
+        }
       ],
-      "cache": { "beta": 1.30, "eps": 5.80, "fcfPerShare": 4.50, "growth5y": 0.18, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.3,
+        "eps": 5.8,
+        "fcfPerShare": 4.5,
+        "growth5y": 0.18,
+        "asOf": "2026-Q1"
+      }
     },
     {
       "symbol": "CEG",
@@ -156,9 +266,19 @@
       "pegRationale": "最大核電業者，MSFT PPA 溢價但受監管",
       "pegLastChange": "2026-05-30",
       "pegHistory": [
-        { "date": "2026-05-30", "peg": 1.5, "reason": "初始設定：AI 基建/電力分類" }
+        {
+          "date": "2026-05-30",
+          "peg": 1.5,
+          "reason": "初始設定：AI 基建/電力分類"
+        }
       ],
-      "cache": { "beta": 1.25, "eps": 9.20, "fcfPerShare": 6.50, "growth5y": 0.16, "asOf": "2026-Q1" }
+      "cache": {
+        "beta": 1.25,
+        "eps": 9.2,
+        "fcfPerShare": 6.5,
+        "growth5y": 0.16,
+        "asOf": "2026-Q1"
+      }
     }
   ]
 }
