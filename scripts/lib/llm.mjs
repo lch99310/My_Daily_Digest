@@ -22,10 +22,11 @@ export async function callLLMReliable(prompt, {
   deepseekKey = process.env.DEEPSEEK_API_KEY,
   openrouterKey = process.env.OPENROUTER_FREE_API_KEY,
   appTitle = 'Finance Digest',
+  responseFormat = null,  // 'json' to request strict JSON mode (DeepSeek only)
 } = {}) {
   if (deepseekKey) {
     try {
-      return await _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey: deepseekKey });
+      return await _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey: deepseekKey, responseFormat });
     } catch (err) {
       console.warn(`✗ DeepSeek: ${err.message.slice(0, 120)}`);
     }
@@ -49,8 +50,15 @@ export async function callLLMReliable(prompt, {
   throw new Error('All LLM providers failed (DeepSeek + OpenRouter free)');
 }
 
-async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey }) {
+async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
   console.log('Calling DeepSeek (paid)...');
+  const body = {
+    model: 'deepseek-v4-flash',
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  };
+  if (responseFormat === 'json') body.response_format = { type: 'json_object' };
+
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
     method: 'POST',
@@ -58,11 +66,7 @@ async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey }) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: 'deepseek-v4-flash',
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

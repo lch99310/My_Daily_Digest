@@ -1,0 +1,53 @@
+name: Monthly PEG Review
+
+on:
+  # Sydney 11:00 on the 1st of every month = 01:00 UTC
+  schedule:
+    - cron: '0 1 1 * *'
+
+  workflow_dispatch:
+
+# Allow committing config/stock-tickers.json back to the repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: peg-review-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  peg-review:
+    name: Run monthly PEG review + commit updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run PEG review
+        env:
+          DEEPSEEK_API_KEY:                   ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENROUTER_FREE_API_KEY:            ${{ secrets.OPENROUTER_FREE_API_KEY }}
+          FINANCE_TELEGRAM_BOT_TOKEN:         ${{ secrets.FINANCE_TELEGRAM_BOT_TOKEN }}
+          FINANCE_TELEGRAM_CHAT_ID:           ${{ secrets.FINANCE_TELEGRAM_CHAT_ID }}
+          FINANCE_TELEGRAM_CHANNEL_CHAT_ID:   ${{ secrets.FINANCE_TELEGRAM_CHANNEL_CHAT_ID }}
+        run: node scripts/peg-review.mjs
+
+      - name: Commit PEG updates (if any)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain config/stock-tickers.json)" ]; then
+            git add config/stock-tickers.json
+            git commit -m "auto: monthly PEG review $(date -u +%Y-%m)"
+            git push
+            echo "PEG changes committed."
+          else
+            echo "No PEG changes this month — config unchanged."
+          fi
