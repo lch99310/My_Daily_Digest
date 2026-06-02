@@ -1,10 +1,13 @@
 name: Daily Stock Fair-Price Digest
 
 on:
-  # Sydney 11:00 (AEST UTC+10) Tue-Sat = UTC 01:00 Tue-Sat
-  # Covers Mon-Fri US market close; skips Sun/Mon Sydney (no fresh close).
+  # Target Sydney 8am (AEST) next day after US market close (US Mon-Fri).
+  # Cron uses UTC: 22:00 UTC Mon-Fri ≡ Sydney 08:00 AEST Tue-Sat.
+  # GitHub Actions scheduled workflows can be delayed by several hours; the
+  # 8am target buys a 5-hour buffer so the digest lands by lunchtime Sydney
+  # even on a bad scheduler day. Cron Mon-Fri (US trading days).
   schedule:
-    - cron: '0 1 * * 2-6'
+    - cron: '0 22 * * 1-5'
 
   workflow_dispatch:
 
