@@ -1,9 +1,11 @@
 name: Weekly Macro Indicators Digest
 
 on:
-  # Sat 10:00 Sydney (AEST UTC+10) = Sat 00:00 UTC
+  # Target Sydney Saturday 7am (AEST). Cron uses UTC: 21:00 UTC Fri ≡ Sydney
+  # 07:00 AEST Sat. GitHub Actions scheduled workflows can be delayed several
+  # hours; this buys buffer so the weekly macro lands by Sat noon Sydney.
   schedule:
-    - cron: '0 0 * * 6'
+    - cron: '0 21 * * 5'
 
   workflow_dispatch:
 
