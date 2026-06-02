@@ -33,6 +33,7 @@ export async function fetchFeed({ name, url, ua = 'finance-digest/1.0', timeoutM
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const xml = await res.text();
     const items = parseRSSItems(xml).map(it => ({ ...it, source: name }));
+    console.log(`  ${name}: ${items.length} items`);
     return items;
   } catch (err) {
     console.warn(`  ${name}: failed (${err.message})`);
