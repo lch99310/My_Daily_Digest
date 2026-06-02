@@ -41,14 +41,19 @@
       "zhName": "NVIDIA",
       "searchKeywords": "NVDA OR NVIDIA OR Blackwell OR Rubin",
       "description": "GPU + CUDA 平台壟斷者；Agentic AI 訓練與推理算力的事實標準供應者，全棧優勢（GPU + CPU + DPU + 網路 + 軟體）無人能及。",
-      "pegOverride": 2,
-      "pegRationale": "唯一全棧（GPU+CPU+DPU+SW）+ CUDA 護城河，sell-side 對 mega-cap AI 一致給 premium",
-      "pegLastChange": "2026-05-30",
+      "pegOverride": 2.1,
+      "pegRationale": "新品與生態系統持續擴張，AI PC與Vera Rubin驗證強化龍頭地位，微幅調升。",
+      "pegLastChange": "2026-06-02",
       "pegHistory": [
         {
           "date": "2026-05-30",
           "peg": 2,
           "reason": "初始設定：AI 純成長龍頭分類"
+        },
+        {
+          "date": "2026-06-02",
+          "peg": 2.1,
+          "reason": "新品與生態系統持續擴張，AI PC與Vera Rubin驗證強化龍頭地位，微幅調升。"
         }
       ],
       "cache": {
