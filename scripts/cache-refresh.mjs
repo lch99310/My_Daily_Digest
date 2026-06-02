@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 // ============================================================================
 // Monthly Cache Refresh — cache-refresh.mjs
-// Pull fresh EPS / FCF / Beta / 5Y growth from Yahoo quoteSummary for each
-// ticker; apply per-field change caps to reject noisy / corrupt data; write
-// back to config/stock-tickers.json.cache and append to cache.history[].
-// Runs ahead of peg-review.mjs each month so the LLM judges PEG against
-// fresh fundamentals, not stale config values.
+// Pulls fresh EPS / FCF / Beta / 5Y growth from Yahoo for each ticker and
+// writes back to config/stock-tickers.json.cache.
+//
+// Philosophy (sell-side style, not bouncer style):
+//   - Always apply Yahoo's fresh value when it's available and physically
+//     plausible. Don't reject "large but valid" moves — cyclical names
+//     (memory, commodity) legitimately swing 50-200%/year.
+//   - Hard sanity bounds catch garbage (NaN, $9999 EPS, beta=42, etc).
+//   - "Notable change" thresholds tag values for human review via the
+//     Telegram summary — but config IS still updated. User can manually
+//     revert if a flagged value looks wrong on inspection.
 // ============================================================================
 
 import { readFile, writeFile } from 'fs/promises';
@@ -27,36 +33,66 @@ if (!CHAT_ID && !CHANNEL_CHAT_ID) {
 const __dirname  = dirname(fileURLToPath(import.meta.url));
 const CFG_PATH   = resolve(__dirname, '../config/stock-tickers.json');
 
-// Per-field change caps. Yahoo occasionally returns junk values; the caps
-// reject those without us needing to babysit. Relative for ratio-like
-// fields, absolute for unit-like fields (beta, growth %).
-const CAPS = {
-  eps:          { kind: 'rel', max: 0.25,  noise: 0.02  },  // ±25%, ignore <2% noise
-  fcfPerShare:  { kind: 'rel', max: 0.30,  noise: 0.02  },  // ±30%
-  beta:         { kind: 'abs', max: 0.30,  noise: 0.02  },  // ±0.30
-  growth5y:     { kind: 'abs', max: 0.05,  noise: 0.005 },  // ±5pp
+// Hard sanity bounds — physically impossible values. Anything outside →
+// reject the new value entirely (keep old). These are "no public company
+// could have this number" type checks, not sentiment-based.
+const HARD_BOUNDS = {
+  eps:         { min: -1000, max: 1000 },   // no $1000+/share EPS exists
+  fcfPerShare: { min: -1000, max: 1000 },
+  beta:        { min: -2,    max: 5    },   // beta outside this is data error
+  growth5y:    { min: -0.5,  max: 2.0  },   // -50% to +200% annual growth
 };
 
-function num2(n) { return Number(n.toFixed(2)); }
-function num3(n) { return Number(n.toFixed(3)); }
+// Notable-change thresholds: above these we still APPLY the new value but
+// add a flag to the Telegram summary so the user can sanity-check. Tuned to
+// the most volatile names in the universe (memory, commodity, lithium).
+const FLAG_THRESHOLD = {
+  eps:         { kind: 'rel', value: 0.50  },  // ±50% rel
+  fcfPerShare: { kind: 'rel', value: 0.60  },  // ±60% rel
+  beta:        { kind: 'abs', value: 0.30  },  // ±0.30 absolute
+  growth5y:    { kind: 'abs', value: 0.05  },  // ±5pp absolute
+};
+
+// Noise floor: skip writeback for tiny changes (avoids commit churn).
+const NOISE_FLOOR = {
+  eps:         { kind: 'rel', value: 0.02  },
+  fcfPerShare: { kind: 'rel', value: 0.02  },
+  beta:        { kind: 'abs', value: 0.02  },
+  growth5y:    { kind: 'abs', value: 0.005 },
+};
+
+const ROUNDING = {
+  eps:         v => Number(v.toFixed(2)),
+  fcfPerShare: v => Number(v.toFixed(2)),
+  beta:        v => Number(v.toFixed(2)),
+  growth5y:    v => Number(v.toFixed(3)),
+};
 
 function evaluateChange(field, oldVal, newVal) {
-  if (!Number.isFinite(oldVal) || !Number.isFinite(newVal)) {
-    return { skip: true, reason: 'missing value' };
-  }
-  if (field === 'eps' && newVal <= 0) {
-    return { skip: true, reason: 'non-positive EPS' };
-  }
-  const cap = CAPS[field];
-  const delta = newVal - oldVal;
-  const relDelta = oldVal !== 0 ? delta / oldVal : Infinity;
-  const change = cap.kind === 'rel' ? Math.abs(relDelta) : Math.abs(delta);
+  if (!Number.isFinite(newVal)) return { action: 'skip', reason: 'no fresh value from Yahoo' };
 
-  if (change < cap.noise) return { skip: true, reason: 'below noise floor' };
-  if (change > cap.max) {
-    return { reject: true, reason: `Δ ${formatDelta(field, oldVal, newVal)} > cap ±${cap.max}${cap.kind === 'rel' ? '%' : ''}` };
+  // Hard sanity check — physically impossible values get rejected outright.
+  const bounds = HARD_BOUNDS[field];
+  if (newVal < bounds.min || newVal > bounds.max) {
+    return { action: 'reject', reason: `${newVal} outside physical bounds [${bounds.min}, ${bounds.max}]` };
   }
-  return { apply: true };
+
+  // New ticker with no prior cache value → just apply.
+  if (!Number.isFinite(oldVal)) return { action: 'apply', flag: false };
+
+  const delta = newVal - oldVal;
+  const absDelta = Math.abs(delta);
+  const relDelta = oldVal !== 0 ? Math.abs(delta / oldVal) : Infinity;
+
+  const noise = NOISE_FLOOR[field];
+  const change = noise.kind === 'rel' ? relDelta : absDelta;
+  if (change < noise.value) return { action: 'skip', reason: 'below noise floor' };
+
+  const flagCap = FLAG_THRESHOLD[field];
+  const flagChange = flagCap.kind === 'rel' ? relDelta : absDelta;
+  const flag = flagChange > flagCap.value;
+
+  return { action: 'apply', flag };
 }
 
 function formatField(field, v) {
@@ -65,12 +101,22 @@ function formatField(field, v) {
   return v.toFixed(2);
 }
 
-function formatDelta(field, oldVal, newVal) {
+function formatChange(field, oldVal, newVal) {
   if (field === 'growth5y') {
-    return `${((newVal - oldVal) * 100).toFixed(1)}pp`;
+    const pp = (newVal - oldVal) * 100;
+    return `${(oldVal * 100).toFixed(1)}% → ${(newVal * 100).toFixed(1)}% (Δ${pp >= 0 ? '+' : ''}${pp.toFixed(1)}pp)`;
   }
-  return `${(((newVal - oldVal) / oldVal) * 100).toFixed(0)}%`;
+  const pct = oldVal !== 0 ? ((newVal - oldVal) / oldVal) * 100 : NaN;
+  const pctStr = Number.isFinite(pct) ? ` (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)` : '';
+  return `${oldVal} → ${newVal}${pctStr}`;
 }
+
+const FIELD_LABEL = {
+  eps:         'EPS',
+  fcfPerShare: 'FCF/sh',
+  beta:        'Beta',
+  growth5y:    '成長',
+};
 
 async function refreshTicker(ticker, today) {
   const fund = await fetchFundamentals(ticker.symbol);
@@ -89,22 +135,23 @@ async function refreshTicker(ticker, today) {
   };
 
   const cache = ticker.cache;
-  const applied = {};
-  const rejected = [];
+  const applied = {};     // field → { old, new, flag }
+  const rejected = [];    // [{ field, attempted, reason }]
 
   for (const field of ['eps', 'fcfPerShare', 'beta', 'growth5y']) {
-    const newVal = candidates[field];
+    const newRaw = candidates[field];
     const oldVal = cache[field];
-    const verdict = evaluateChange(field, oldVal, newVal);
-    if (verdict.apply) {
-      const rounded = field === 'growth5y' ? num3(newVal) : num2(newVal);
-      applied[field] = { old: oldVal, new: rounded };
-    } else if (verdict.reject) {
-      rejected.push(`${field} ${formatField(field, oldVal)} → ${formatField(field, newVal)}：${verdict.reason}`);
+    const verdict = evaluateChange(field, oldVal, newRaw);
+    if (verdict.action === 'apply') {
+      const rounded = ROUNDING[field](newRaw);
+      applied[field] = { old: oldVal, new: rounded, flag: verdict.flag };
+    } else if (verdict.action === 'reject') {
+      rejected.push({ field, attempted: newRaw, reason: verdict.reason });
     }
+    // 'skip' is silent — either no value or no meaningful change
   }
 
-  // Write applied values back into cache, record audit trail.
+  // Write applied values back, append audit entry if anything changed.
   if (Object.keys(applied).length > 0) {
     for (const [field, { new: v }] of Object.entries(applied)) cache[field] = v;
     cache.asOf = today;
@@ -112,7 +159,9 @@ async function refreshTicker(ticker, today) {
     cache.history.push({
       date: today,
       source: 'yahoo',
-      changes: Object.fromEntries(Object.entries(applied).map(([f, { old, new: n }]) => [f, { from: old, to: n }])),
+      changes: Object.fromEntries(
+        Object.entries(applied).map(([f, { old, new: n, flag }]) => [f, { from: old, to: n, flagged: flag }]),
+      ),
     });
     if (cache.history.length > 12) cache.history = cache.history.slice(-12);
   }
@@ -120,7 +169,7 @@ async function refreshTicker(ticker, today) {
   return { symbol: ticker.symbol, applied, rejected };
 }
 
-// -- Telegram (with retry) -------------------------------------------------
+// -- Telegram with retry --------------------------------------------------
 
 async function sendTelegram(text, parseMode) {
   const destinations = [
@@ -154,7 +203,7 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// -- Main ------------------------------------------------------------------
+// -- Main -----------------------------------------------------------------
 
 async function main() {
   const cfg = JSON.parse(await readFile(CFG_PATH, 'utf-8'));
@@ -163,9 +212,10 @@ async function main() {
   console.log(`Refreshing cache for ${cfg.tickers.length} tickers...`);
   const results = await Promise.allSettled(cfg.tickers.map(t => refreshTicker(t, today)));
 
-  const updated = [];
-  const rejected = [];
-  const failed = [];
+  const normalUpdates = [];   // applied with no flag
+  const flaggedUpdates = [];  // applied with flag (large change)
+  const rejected = [];        // hit hard physical bounds
+  const failed = [];          // exception (Yahoo unreachable, etc.)
 
   for (let i = 0; i < results.length; i++) {
     const t = cfg.tickers[i];
@@ -175,48 +225,61 @@ async function main() {
       continue;
     }
     const { symbol, applied, rejected: rej } = r.value;
-    if (Object.keys(applied).length > 0) updated.push({ symbol, applied });
+    const hasFlag = Object.values(applied).some(a => a.flag);
+    if (Object.keys(applied).length > 0) {
+      (hasFlag ? flaggedUpdates : normalUpdates).push({ symbol, applied });
+    }
     if (rej.length > 0) rejected.push({ symbol, items: rej });
   }
 
-  // Write back even if nothing changed — keeps JSON formatting consistent
-  // and lets the workflow detect no-diff via git status.
   await writeFile(CFG_PATH, JSON.stringify(cfg, null, 2) + '\n', 'utf-8');
-  console.log(`Applied changes to ${updated.length} tickers, ${rejected.length} had rejected fields, ${failed.length} failed`);
+  console.log(`${normalUpdates.length} normal updates, ${flaggedUpdates.length} flagged, ${rejected.length} rejected, ${failed.length} failed`);
 
-  // -- Telegram summary ---------------------------------------------------
+  // -- Telegram summary -------------------------------------------------
   const monthLabel = today.slice(0, 7);
   const parts = [`🔄 <b>Monthly Cache Refresh ${monthLabel}</b>`];
 
-  if (updated.length === 0) {
-    parts.push('本月所有 ticker 維持原 cache（無顯著變化或 Yahoo 抓取失敗）。');
+  const totalUpdated = normalUpdates.length + flaggedUpdates.length;
+  if (totalUpdated === 0) {
+    parts.push('本月所有 ticker 維持原 cache（變動低於噪音門檻或 Yahoo 無法抓取）。');
   } else {
-    parts.push(`<b>更新 ${updated.length} 檔：</b>`);
-    for (const u of updated) {
-      const lines = Object.entries(u.applied).map(([f, { old, new: n }]) => {
-        const label = { eps: 'EPS', fcfPerShare: 'FCF/sh', beta: 'Beta', growth5y: '成長' }[f] || f;
-        const fmt   = f === 'growth5y'
-          ? `${(old * 100).toFixed(1)}% → ${(n * 100).toFixed(1)}%`
-          : `${old} → ${n}`;
-        return `  ${label} ${fmt}`;
-      });
-      parts.push(`• <b>${escapeHtml(u.symbol)}</b>\n${lines.join('\n')}`);
+    parts.push(`已更新 <b>${totalUpdated}</b> 檔（其中 ${flaggedUpdates.length} 檔變動較大）。`);
+
+    if (flaggedUpdates.length > 0) {
+      parts.push('<b>⚠️ 變動較大，建議人工 review:</b>');
+      for (const u of flaggedUpdates) {
+        const lines = Object.entries(u.applied).map(([f, { old, new: n, flag }]) => {
+          const marker = flag ? ' ⚠️' : '';
+          return `  ${FIELD_LABEL[f]} ${escapeHtml(formatChange(f, old, n))}${marker}`;
+        });
+        parts.push(`• <b>${escapeHtml(u.symbol)}</b>\n${lines.join('\n')}`);
+      }
+    }
+
+    if (normalUpdates.length > 0) {
+      parts.push('<b>正常更新:</b>');
+      for (const u of normalUpdates) {
+        const lines = Object.entries(u.applied).map(([f, { old, new: n }]) =>
+          `  ${FIELD_LABEL[f]} ${escapeHtml(formatChange(f, old, n))}`,
+        );
+        parts.push(`• <b>${escapeHtml(u.symbol)}</b>\n${lines.join('\n')}`);
+      }
     }
   }
 
   if (rejected.length > 0) {
-    parts.push(`<b>⚠️ 拒絕變動 (超過安全閥) — ${rejected.length} 檔：</b>`);
+    parts.push('<b>❌ 物理範圍外，拒絕寫入:</b>');
     for (const r of rejected) {
-      parts.push(`• ${escapeHtml(r.symbol)}\n${r.items.map(i => '  ' + escapeHtml(i)).join('\n')}`);
+      parts.push(`• ${escapeHtml(r.symbol)}\n${r.items.map(i => `  ${FIELD_LABEL[i.field] || i.field}: ${escapeHtml(i.reason)}`).join('\n')}`);
     }
   }
 
   if (failed.length > 0) {
-    parts.push(`<b>抓取失敗 ${failed.length} 檔：</b>${failed.map(f => escapeHtml(f.symbol)).join('、')}`);
+    parts.push(`<b>抓取失敗 ${failed.length} 檔（保留原 cache）:</b> ${failed.map(f => escapeHtml(f.symbol)).join('、')}`);
   }
 
   parts.push('');
-  parts.push('<i>cache 已寫回 repo；PEG review 將以新 cache 跑判斷。</i>');
+  parts.push('<i>flag 標記只是提醒，cache 已寫入。如數值看起來不對請手動 revert config。PEG review 將以新 cache 跑判斷。</i>');
 
   await sendTelegram(parts.join('\n\n'), 'HTML');
   console.log('Telegram summary sent.');
