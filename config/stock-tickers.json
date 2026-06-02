@@ -425,7 +425,7 @@
       "cache": {
         "beta": 0.85,
         "eps": 11.2,
-        "fcfPerShare": 9.0,
+        "fcfPerShare": 9,
         "growth5y": 0.07,
         "asOf": "2026-Q1"
       }
