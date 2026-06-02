@@ -310,17 +310,31 @@ async function main() {
     console.warn(`  10Y treasury unavailable; using fallback ${(globals.fallbackRiskFree * 100).toFixed(2)}%`);
   }
 
-  console.log('Fetching per-ticker news RSS...');
-  const newsResults = await Promise.allSettled(tickers.map(t => fetchFeed({
-    name: t.symbol,
-    url: `https://finance.yahoo.com/rss/headline?s=${encodeURIComponent(t.symbol)}`,
-    ua: 'finance-digest/1.0',
-  })));
+  console.log('Fetching per-ticker news via Google News RSS (when:2d)...');
+  // Yahoo's per-ticker RSS (finance.yahoo.com/rss/headline?s=X) has been
+  // unreliable since the 2024 Yahoo Finance redesign — returns empty/stale
+  // feeds, no failures logged, just zero coverage downstream. Switched to
+  // Google News with `when:2d` window + the ticker's searchKeywords (which
+  // are already tuned per-ticker for both the symbol and common company-
+  // name aliases). filterByAge still applies a hard 24h cutoff in code.
+  const newsResults = await Promise.allSettled(tickers.map(t => {
+    const keywords = t.searchKeywords || t.symbol;
+    const q = encodeURIComponent(`when:2d ${keywords}`);
+    const url = `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`;
+    return fetchFeed({ name: t.symbol, url, ua: 'finance-digest/1.0' });
+  }));
   const newsBySymbol = Object.fromEntries(newsResults.map((r, i) => {
     const items = r.status === 'fulfilled' ? r.value : [];
     const fresh = sortByDateDesc(dedupeByTitle(filterByAge(items, NEWS_LOOKBACK_HOURS)));
+    if (items.length > 0 && fresh.length === 0) {
+      console.log(`  ${tickers[i].symbol}: ${items.length} raw items but 0 passed 24h filter`);
+    } else if (fresh.length > 0) {
+      console.log(`  ${tickers[i].symbol}: ${fresh.length} items within 24h`);
+    }
     return [tickers[i].symbol, fresh.slice(0, NEWS_PER_TICKER_RAW)];
   }));
+  const totalFresh = Object.values(newsBySymbol).reduce((s, a) => s + a.length, 0);
+  console.log(`Total fresh news items across all tickers: ${totalFresh}`);
 
   console.log('Summarizing news via LLM (DeepSeek → OpenRouter fallback)...');
   const newsSummaries = await summarizeNewsBatch(tickers, newsBySymbol);

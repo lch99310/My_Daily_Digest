@@ -80,10 +80,45 @@ function buildPrompt({ tickers, newsByTicker, capexBlock, globals }) {
     const newsLines = news.length === 0
       ? '(無新聞素材)'
       : news.map((n, i) => `${i + 1}. ${n.title}${n.desc ? ' — ' + n.desc.slice(0, 200) : ''}`).join('\n');
+
+    // Fresh fundamentals (just refreshed by cache-refresh.mjs earlier in
+    // the chain). Letting the LLM see these lets it factor in EPS/FCF
+    // momentum, growth-rate revisions and beta drift — i.e. it can lower
+    // PEG when growth estimates compress, raise it when EPS surprises up.
+    const c = t.cache || {};
+    const fundLine = [
+      `EPS(TTM) ${c.eps ?? '—'}`,
+      `FCF/sh ${c.fcfPerShare ?? '—'}`,
+      `Beta ${c.beta ?? '—'}`,
+      `5Y 成長預估 ${Number.isFinite(c.growth5y) ? (c.growth5y * 100).toFixed(1) + '%' : '—'}`,
+    ].join(' · ');
+
+    // Fundamental trajectory — last up-to-3 cache-refresh deltas. Reveals
+    // whether growth/EPS are being revised up or down month over month.
+    const history = Array.isArray(c.history) ? c.history.slice(-3) : [];
+    const trajectoryLines = history.length > 0
+      ? history.map(h => {
+          const bits = [];
+          if (h.changes?.eps) bits.push(`EPS ${h.changes.eps.from}→${h.changes.eps.to}`);
+          if (h.changes?.fcfPerShare) bits.push(`FCF/sh ${h.changes.fcfPerShare.from}→${h.changes.fcfPerShare.to}`);
+          if (h.changes?.growth5y) {
+            const f = (h.changes.growth5y.from * 100).toFixed(1);
+            const tt = (h.changes.growth5y.to * 100).toFixed(1);
+            bits.push(`成長 ${f}%→${tt}%`);
+          }
+          if (h.changes?.beta) bits.push(`Beta ${h.changes.beta.from}→${h.changes.beta.to}`);
+          return `  ${h.date}: ${bits.join(', ') || '(無欄位變動)'}`;
+        }).join('\n')
+      : '  (無歷史記錄)';
+
     return `### ${t.symbol} — ${t.zhName}
 當前 PEG: ${t.pegOverride}
-上次調整 (${t.pegLastChange}) 理由: ${t.pegRationale}
+上次 PEG 調整 (${t.pegLastChange}) 理由: ${t.pegRationale}
 分類描述: ${t.description}
+
+最新基本面 (本月剛 refresh): ${fundLine}
+近 3 次 cache-refresh 變化:
+${trajectoryLines}
 
 近 30 天新聞:
 ${newsLines}`;
@@ -104,8 +139,16 @@ PEG 數值反映以下三件事的綜合：
 - AI 基建/電力 (機房、電網、核電): 1.5 - 1.8
 - AI 週期 (foundry / memory): 1.0 - 1.4
 
+# 基本面動能怎麼解讀 (cache-refresh 給的數據)
+- 成長預估下修 >3pp (例如 30% → 26%) → 通常 PEG 該下調 0.1-0.2
+- 成長預估上修 >3pp → PEG 可上調 0.1-0.2
+- EPS 連續上修 + FCF 連續上修 → quality momentum，PEG 可小幅上調
+- Beta 上升 >0.20 → 風險加大、市場視為更不穩，PEG 該下調
+- 基本面持平但新聞偏正 → PEG 維持或極小幅上調
+- 注意「成長預估」(growth5y) 比 EPS 變動更重要 — 預估反映 sell-side 對未來的看法
+
 # 任務
-根據以下每檔個股「過去 30 天的新聞素材」與「AI 巨頭 capex 趨勢」，判斷每檔 PEG 是否需要月度調整。
+綜合「30 天新聞素材」、「AI 巨頭 capex 趨勢」、「公司基本面動能」三類訊號，判斷每檔 PEG 是否需要月度調整。基本面動能 (尤其是成長預估變化) 應與新聞素材並重。
 
 # AI 巨頭 capex 趨勢 (sector context)
 ${capexBlock}
