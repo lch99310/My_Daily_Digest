@@ -1,9 +1,13 @@
 name: Monthly PEG Review
 
 on:
-  # Sydney 11:00 on the 1st of every month = 01:00 UTC
-  schedule:
-    - cron: '0 1 1 * *'
+  # Chains off Monthly Cache Refresh so the LLM judges PEG against fresh
+  # fundamentals. Auto-runs only when cache-refresh succeeds; manual
+  # dispatch still works for ad-hoc runs without re-refreshing cache.
+  workflow_run:
+    workflows: ["Monthly Cache Refresh"]
+    types: [completed]
+    branches: [main]
 
   workflow_dispatch:
 
@@ -19,11 +23,19 @@ jobs:
   peg-review:
     name: Run monthly PEG review + commit updates
     runs-on: ubuntu-latest
+    # Only run if cache-refresh succeeded (or this is a manual dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 15
 
     steps:
-      - name: Checkout
+      - name: Checkout latest main
+        # workflow_run triggers carry the SHA from the cache-refresh
+        # workflow's TRIGGERING commit, not from the auto-commit cache-refresh
+        # itself pushed. Explicitly pull latest main so we read the freshly
+        # updated cache values.
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -1,0 +1,51 @@
+name: Monthly Cache Refresh
+
+on:
+  # 1st of month at 00:00 UTC (target Sydney 10am AEST, with delay buffer).
+  # Must run BEFORE Monthly PEG Review so the LLM sees fresh fundamentals.
+  schedule:
+    - cron: '0 0 1 * *'
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cache-refresh-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cache-refresh:
+    name: Refresh cached fundamentals + commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run cache refresh
+        env:
+          FINANCE_TELEGRAM_BOT_TOKEN:         ${{ secrets.FINANCE_TELEGRAM_BOT_TOKEN }}
+          FINANCE_TELEGRAM_CHAT_ID:           ${{ secrets.FINANCE_TELEGRAM_CHAT_ID }}
+          FINANCE_TELEGRAM_CHANNEL_CHAT_ID:   ${{ secrets.FINANCE_TELEGRAM_CHANNEL_CHAT_ID }}
+        run: node scripts/cache-refresh.mjs
+
+      - name: Commit cache updates (if any)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain config/stock-tickers.json)" ]; then
+            git add config/stock-tickers.json
+            git commit -m "auto: monthly cache refresh $(date -u +%Y-%m)"
+            git push
+            echo "Cache changes committed."
+          else
+            echo "No cache changes this month — config unchanged."
+          fi
