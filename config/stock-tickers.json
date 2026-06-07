@@ -453,6 +453,54 @@
         "growth5y": 0.35,
         "asOf": "2026-Q1"
       }
+    },
+    {
+      "symbol": "NXT.AX",
+      "exchange": "AU",
+      "zhName": "NEXTDC",
+      "searchKeywords": "NEXTDC OR \"NXT.AX\" OR \"NEXT DC\"",
+      "description": "澳洲最大專業資料中心業者；hyperscaler 主要供應方；AI 算力需求推動 S5 / S6 hyperscale 機房擴建，但仍處高 capex 階段、EPS 即將轉正。",
+      "pegOverride": 1.6,
+      "pegRationale": "澳洲 AI 基建純玩家；hyperscaler 客戶集中度高 + REIT-like 利率敏感",
+      "pegLastChange": "2026-06-02",
+      "pegHistory": [
+        {
+          "date": "2026-06-02",
+          "peg": 1.6,
+          "reason": "初始設定：AI 基建/電力分類（澳股）"
+        }
+      ],
+      "cache": {
+        "beta": 1.3,
+        "eps": 0.08,
+        "fcfPerShare": -0.3,
+        "growth5y": 0.28,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "MAQ.AX",
+      "exchange": "AU",
+      "zhName": "Macquarie Technology",
+      "searchKeywords": "\"Macquarie Technology\" OR MAQ.AX OR \"Macquarie Telecom\"",
+      "description": "澳洲資料中心 + 電信 + 資安綜合科技集團；IC2 Sydney 機房擴建中；規模較 NXT 小、業務多元化但 AI 基建曝險明確。",
+      "pegOverride": 1.5,
+      "pegRationale": "澳洲 AI 基建 diversified；規模較 NXT 小但獲利穩定，多元業務折扣",
+      "pegLastChange": "2026-06-02",
+      "pegHistory": [
+        {
+          "date": "2026-06-02",
+          "peg": 1.5,
+          "reason": "初始設定：AI 基建/電力分類（澳股，diversified）"
+        }
+      ],
+      "cache": {
+        "beta": 0.95,
+        "eps": 1.5,
+        "fcfPerShare": 0.4,
+        "growth5y": 0.18,
+        "asOf": "2026-Q1"
+      }
     }
   ]
 }
