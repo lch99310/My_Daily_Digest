@@ -382,11 +382,11 @@ async function tryModelsSequentially(models, prompt) {
 // Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
 
 // DeepSeek is the last line of defence: when every free model is exhausted, this
-// is the only thing standing between us and a missed briefing. Its output length
-// is stochastic — an occasional run stops early and lands under MIN_CONTENT_LENGTH
-// (e.g. a 1213-char reply where a full 8-card briefing needs ≥2000). A single
-// short completion must NOT sink the whole pipeline, so we retry a few times;
-// a fresh sample almost always produces a complete briefing.
+// is the only thing standing between us and a missed briefing. We use v4-pro
+// (49B active / 1.6T total) rather than v4-flash (13B active) because the 8-card
+// structured briefing is too complex for Flash — it consistently truncates under
+// the 2000-char threshold, even on retries. Pro reliably produces the full
+// output. Cost is a few cents per run; reliability is worth it.
 const DEEPSEEK_MAX_ATTEMPTS = 3;
 
 async function callDeepSeekOnce(prompt) {
@@ -398,7 +398,7 @@ async function callDeepSeekOnce(prompt) {
       'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
       max_tokens: MAX_TOKENS,
       messages: [{ role: 'user', content: prompt }],
     }),
