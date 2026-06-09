@@ -138,7 +138,21 @@ function renderCard(ticker, params, quote, scenarios) {
   // Currency: prefer live quote field (Yahoo chart meta.currency), then a
   // manual override in config (ticker.currency), then USD as default.
   const currency = (quote?.currency || ticker.currency || 'USD').toUpperCase();
-  const priceLine = `收盤 (${dateLabel})  ${currency} ${money(params.price)}`;
+
+  // Daily change vs previous close. Asian convention: red 🔴 = up, green 🟢 =
+  // down (Telegram HTML mode doesn't allow inline CSS colors, so colored
+  // emojis are the only way to convey direction visually).
+  const change = (Number.isFinite(params.price) && Number.isFinite(params.prevClose) && params.prevClose > 0)
+    ? (params.price - params.prevClose) / params.prevClose
+    : NaN;
+  let changeStr = '';
+  if (Number.isFinite(change)) {
+    const pct = (change * 100).toFixed(2);
+    if (change > 0)      changeStr = `  🔴 +${pct}%`;
+    else if (change < 0) changeStr = `  🟢 ${pct}%`;
+    else                 changeStr = `  ⚪ 0.00%`;
+  }
+  const priceLine = `收盤 (${dateLabel})  ${currency} ${money(params.price)}${changeStr}`;
 
   const blocks = [];
   for (const key of ['base', 'bull', 'bear']) {
