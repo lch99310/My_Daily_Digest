@@ -65,6 +65,54 @@
       }
     },
     {
+      "symbol": "GOOGL",
+      "exchange": "US",
+      "zhName": "Alphabet",
+      "searchKeywords": "Alphabet OR GOOGL OR Google OR Gemini OR \"TPU v7\"",
+      "description": "搜尋 + 雲端 + YouTube + Gemini 大模型；自研 TPU v7 Ironwood 是 AI 加速器市場前三大；Cloud 業務直接受惠企業 Agentic AI 部署需求。",
+      "pegOverride": 1.6,
+      "pegRationale": "AI hyperscaler 需求製造者 + 自研 TPU；但搜尋面臨 AI 替代風險折扣",
+      "pegLastChange": "2026-06-02",
+      "pegHistory": [
+        {
+          "date": "2026-06-02",
+          "peg": 1.6,
+          "reason": "初始設定：AI hyperscaler / 大型平台類"
+        }
+      ],
+      "cache": {
+        "beta": 1.05,
+        "eps": 8.0,
+        "fcfPerShare": 5.5,
+        "growth5y": 0.15,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "MSFT",
+      "exchange": "US",
+      "zhName": "Microsoft",
+      "searchKeywords": "Microsoft OR MSFT OR Azure OR Copilot OR \"OpenAI partnership\" OR Maia",
+      "description": "Azure + OpenAI 戰略夥伴 + Copilot；OpenAI 模型在 Azure 獨家託管使其 AI 商業化最領先；自研 Maia 200 ASIC + Cobalt CPU 降低對 NVIDIA 依賴。",
+      "pegOverride": 1.8,
+      "pegRationale": "AI 商業化最領先 hyperscaler；OpenAI 獨家託管 + Azure 高速增長雙引擎",
+      "pegLastChange": "2026-06-02",
+      "pegHistory": [
+        {
+          "date": "2026-06-02",
+          "peg": 1.8,
+          "reason": "初始設定：AI hyperscaler / 領跑者"
+        }
+      ],
+      "cache": {
+        "beta": 0.92,
+        "eps": 13.5,
+        "fcfPerShare": 8.0,
+        "growth5y": 0.14,
+        "asOf": "2026-Q1"
+      }
+    },
+    {
       "symbol": "AMD",
       "exchange": "US",
       "zhName": "Advanced Micro Devices",
@@ -510,54 +558,6 @@
         "eps": 1.5,
         "fcfPerShare": 0.4,
         "growth5y": 0.18,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "GOOGL",
-      "exchange": "US",
-      "zhName": "Alphabet",
-      "searchKeywords": "Alphabet OR GOOGL OR Google OR Gemini OR \"TPU v7\"",
-      "description": "搜尋 + 雲端 + YouTube + Gemini 大模型；自研 TPU v7 Ironwood 是 AI 加速器市場前三大；Cloud 業務直接受惠企業 Agentic AI 部署需求。",
-      "pegOverride": 1.6,
-      "pegRationale": "AI hyperscaler 需求製造者 + 自研 TPU；但搜尋面臨 AI 替代風險折扣",
-      "pegLastChange": "2026-06-02",
-      "pegHistory": [
-        {
-          "date": "2026-06-02",
-          "peg": 1.6,
-          "reason": "初始設定：AI hyperscaler / 大型平台類"
-        }
-      ],
-      "cache": {
-        "beta": 1.05,
-        "eps": 8.0,
-        "fcfPerShare": 5.5,
-        "growth5y": 0.15,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "MSFT",
-      "exchange": "US",
-      "zhName": "Microsoft",
-      "searchKeywords": "Microsoft OR MSFT OR Azure OR Copilot OR \"OpenAI partnership\" OR Maia",
-      "description": "Azure + OpenAI 戰略夥伴 + Copilot；OpenAI 模型在 Azure 獨家託管使其 AI 商業化最領先；自研 Maia 200 ASIC + Cobalt CPU 降低對 NVIDIA 依賴。",
-      "pegOverride": 1.8,
-      "pegRationale": "AI 商業化最領先 hyperscaler；OpenAI 獨家託管 + Azure 高速增長雙引擎",
-      "pegLastChange": "2026-06-02",
-      "pegHistory": [
-        {
-          "date": "2026-06-02",
-          "peg": 1.8,
-          "reason": "初始設定：AI hyperscaler / 領跑者"
-        }
-      ],
-      "cache": {
-        "beta": 0.92,
-        "eps": 13.5,
-        "fcfPerShare": 8.0,
-        "growth5y": 0.14,
         "asOf": "2026-Q1"
       }
     }
