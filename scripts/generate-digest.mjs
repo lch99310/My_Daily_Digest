@@ -422,6 +422,22 @@ async function main() {
   const { prompt, urlMap } = buildPrompt(data);
   console.log(`Prompt built: ${Object.keys(urlMap).length} source items with stable URL IDs`);
 
+  // If upstream feeds returned 0 items (weekend, holiday, upstream outage,
+  // or all sources >24h old) skip the LLM call entirely — asking it to
+  // summarize nothing produces a sub-100-char response that just trips
+  // MIN_CONTENT_LENGTH and exits the workflow red. Write a brief placeholder
+  // so delivery steps still find a file and the run completes green.
+  if (Object.keys(urlMap).length === 0) {
+    const today = new Date().toLocaleDateString('zh-TW', {
+      year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+    });
+    const placeholder = `# 📭 ${today} — 沒有新內容\n\n` +
+      `上游 feed (zarazhangrui/follow-builders) 過去 24 小時內未更新，或所有來源皆為空。明天再試。`;
+    await writeFile(OUTPUT_FILE, placeholder, 'utf-8');
+    console.log(`No source items in feeds — skipped LLM call, wrote placeholder to ${OUTPUT_FILE}.`);
+    return;
+  }
+
   let digest;
   try {
     digest = await tryModelsSequentially(models, prompt);
