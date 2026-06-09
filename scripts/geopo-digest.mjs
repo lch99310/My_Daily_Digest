@@ -381,8 +381,15 @@ async function tryModelsSequentially(models, prompt) {
 // -- DeepSeek paid fallback ---------------------------------------------------
 // Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
 
-async function callDeepSeek(prompt) {
-  console.log('Falling back to DeepSeek (paid)...');
+// DeepSeek is the last line of defence: when every free model is exhausted, this
+// is the only thing standing between us and a missed briefing. We use v4-pro
+// (49B active / 1.6T total) rather than v4-flash (13B active) because the 8-card
+// structured briefing is too complex for Flash — it consistently truncates under
+// the 2000-char threshold, even on retries. Pro reliably produces the full
+// output. Cost is a few cents per run; reliability is worth it.
+const DEEPSEEK_MAX_ATTEMPTS = 3;
+
+async function callDeepSeekOnce(prompt) {
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     signal: AbortSignal.timeout(120_000),
     method: 'POST',
@@ -391,7 +398,7 @@ async function callDeepSeek(prompt) {
       'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
       max_tokens: MAX_TOKENS,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -408,8 +415,27 @@ async function callDeepSeek(prompt) {
   if (content.length < MIN_CONTENT_LENGTH) {
     throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
   }
-  console.log('✓ Success: DeepSeek (paid fallback)');
   return content;
+}
+
+async function callDeepSeek(prompt) {
+  console.log('Falling back to DeepSeek (paid)...');
+  let lastErr;
+  for (let attempt = 1; attempt <= DEEPSEEK_MAX_ATTEMPTS; attempt++) {
+    try {
+      const content = await callDeepSeekOnce(prompt);
+      console.log(`✓ Success: DeepSeek (paid fallback, attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS})`);
+      return content;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`✗ DeepSeek attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS}: ${err.message.slice(0, 120)}`);
+      // Brief backoff between attempts (skip after the final one).
+      if (attempt < DEEPSEEK_MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      }
+    }
+  }
+  throw new Error(`DeepSeek failed after ${DEEPSEEK_MAX_ATTEMPTS} attempts — ${lastErr?.message || 'unknown error'}`);
 }
 
 // -- Telegram delivery -------------------------------------------------------
