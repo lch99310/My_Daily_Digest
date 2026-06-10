@@ -23,12 +23,30 @@ export async function fetchQuotes(symbols) {
   const results = await Promise.allSettled(symbols.map(async (sym) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
     const data = await getJson(url);
-    const meta = data.chart?.result?.[0]?.meta;
+    const result = data.chart?.result?.[0];
+    const meta = result?.meta;
     if (!meta) throw new Error('no meta');
+
+    // Yahoo chart meta has TWO "previous close" fields with very different
+    // semantics:
+    //   meta.previousClose       — the prior REGULAR session's close (what we
+    //                              want for "yesterday vs today")
+    //   meta.chartPreviousClose  — the close BEFORE the chart range starts.
+    //                              For range=5d that's ~6 calendar days ago,
+    //                              giving wildly wrong "daily" change values.
+    // We prefer previousClose, then fall back to the second-to-last candle's
+    // close (deterministic from time series), then chartPreviousClose as a
+    // last resort.
+    const closes = (result?.indicators?.quote?.[0]?.close || []).filter(Number.isFinite);
+    const prevFromCandle = closes.length >= 2 ? closes[closes.length - 2] : undefined;
+    const prevClose = Number.isFinite(meta.previousClose) ? meta.previousClose
+                    : Number.isFinite(prevFromCandle)     ? prevFromCandle
+                    : meta.chartPreviousClose;
+
     return {
       symbol: meta.symbol || sym,
       regularMarketPrice: meta.regularMarketPrice,
-      regularMarketPreviousClose: meta.chartPreviousClose ?? meta.previousClose,
+      regularMarketPreviousClose: prevClose,
       regularMarketTime: meta.regularMarketTime,
       currency: meta.currency,
       source: 'yahoo-chart',
