@@ -63,7 +63,9 @@ Go to your repo **Settings → Secrets and variables → Actions** and add:
 
 | Secret | Required | Used By |
 |--------|----------|---------|
-| `OPENROUTER_FREE_API_KEY` | Yes | All digests — get one free at [openrouter.ai](https://openrouter.ai/) |
+| `AGNES_AI_API_KEY` | Recommended | First-priority LLM for all digests — get one at [agnes-ai.com](https://agnes-ai.com/) |
+| `OPENROUTER_FREE_API_KEY` | Yes | Free fallback for all digests — get one free at [openrouter.ai](https://openrouter.ai/) |
+| `DEEPSEEK_API_KEY` | Optional | Paid last-resort fallback — [deepseek.com](https://deepseek.com/) |
 | `DC_TELEGRAM_BOT_TOKEN` | Yes (DC) | Create via [@BotFather](https://t.me/BotFather) |
 | `DC_TELEGRAM_CHAT_ID` | Yes (DC) | Get via [@userinfobot](https://t.me/userinfobot) |
 | `GEOPO_TELEGRAM_BOT_TOKEN` | Yes (Geopolitics) | Can reuse the same bot, or create a separate one |

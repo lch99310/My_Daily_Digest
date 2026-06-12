@@ -44,6 +44,7 @@ jobs:
 
       - name: Run PEG review
         env:
+          AGNES_AI_API_KEY:                   ${{ secrets.AGNES_AI_API_KEY }}
           DEEPSEEK_API_KEY:                   ${{ secrets.DEEPSEEK_API_KEY }}
           OPENROUTER_FREE_API_KEY:            ${{ secrets.OPENROUTER_FREE_API_KEY }}
           FINANCE_TELEGRAM_BOT_TOKEN:         ${{ secrets.FINANCE_TELEGRAM_BOT_TOKEN }}

@@ -1,7 +1,7 @@
 // LLM call helper for new digests (stock, macro).
-// Order: DeepSeek (paid, reliable) first → OpenRouter free models fallback.
-// This is the REVERSE of dc-digest.mjs / geopo-digest.mjs ordering — existing
-// digests keep their own ordering and inline implementations untouched.
+// Order: Agnes AI → DeepSeek (paid, reliable) → OpenRouter free models fallback.
+// Existing inline digests (dc, geopo, generate-digest) follow the same Agnes-
+// first priority but use their own implementations.
 //
 // Rationale: finance digests carry money-decision info; reliability beats cost.
 
@@ -19,11 +19,20 @@ const FREE_FALLBACK_MODELS = [
 export async function callLLMReliable(prompt, {
   maxTokens = 4000,
   minContentLength = 100,
+  agnesKey = process.env.AGNES_AI_API_KEY,
   deepseekKey = process.env.DEEPSEEK_API_KEY,
   openrouterKey = process.env.OPENROUTER_FREE_API_KEY,
   appTitle = 'Finance Digest',
-  responseFormat = null,  // 'json' to request strict JSON mode (DeepSeek only)
+  responseFormat = null,  // 'json' to request strict JSON mode (Agnes / DeepSeek)
 } = {}) {
+  if (agnesKey) {
+    try {
+      return await _callAgnes(prompt, { maxTokens, minContentLength, apiKey: agnesKey, responseFormat });
+    } catch (err) {
+      console.warn(`✗ Agnes: ${err.message.slice(0, 120)}`);
+    }
+  }
+
   if (deepseekKey) {
     try {
       return await _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey: deepseekKey, responseFormat });
@@ -47,7 +56,41 @@ export async function callLLMReliable(prompt, {
     }
   }
 
-  throw new Error('All LLM providers failed (DeepSeek + OpenRouter free)');
+  throw new Error('All LLM providers failed (Agnes + DeepSeek + OpenRouter free)');
+}
+
+async function _callAgnes(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
+  console.log('Calling Agnes AI...');
+  const body = {
+    model: 'agnes-2.0-flash',
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  };
+  if (responseFormat === 'json') body.response_format = { type: 'json_object' };
+
+  const response = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', {
+    signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Agnes ${response.status}: ${err.slice(0, 200)}`);
+  }
+
+  const result = await response.json();
+  const content = (result.choices?.[0]?.message?.content || '').trim();
+  if (!content) throw new Error('Agnes returned empty response');
+  if (content.length < minContentLength) {
+    throw new Error(`Agnes response too short (${content.length} chars, need ≥${minContentLength})`);
+  }
+  console.log('✓ Success: Agnes');
+  return content;
 }
 
 async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
