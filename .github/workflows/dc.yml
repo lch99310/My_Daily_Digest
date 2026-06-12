@@ -40,6 +40,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Generate and deliver data center briefing
         env:
+          AGNES_AI_API_KEY:              ${{ secrets.AGNES_AI_API_KEY }}
           OPENROUTER_FREE_API_KEY:       ${{ secrets.OPENROUTER_FREE_API_KEY }}
           DEEPSEEK_API_KEY:              ${{ secrets.DEEPSEEK_API_KEY }}
           DC_TELEGRAM_BOT_TOKEN:         ${{ secrets.DC_TELEGRAM_BOT_TOKEN }}

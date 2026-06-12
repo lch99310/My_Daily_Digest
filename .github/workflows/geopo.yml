@@ -40,6 +40,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Generate and deliver geopolitical briefing
         env:
+          AGNES_AI_API_KEY:                 ${{ secrets.AGNES_AI_API_KEY }}
           OPENROUTER_FREE_API_KEY:          ${{ secrets.OPENROUTER_FREE_API_KEY }}
           DEEPSEEK_API_KEY:                 ${{ secrets.DEEPSEEK_API_KEY }}
           GEOPO_TELEGRAM_BOT_TOKEN:         ${{ secrets.GEOPO_TELEGRAM_BOT_TOKEN }}

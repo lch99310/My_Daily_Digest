@@ -7,13 +7,17 @@
 
 import { writeFile } from 'fs/promises';
 
+const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
 const DEEPSEEK_API_KEY       = process.env.DEEPSEEK_API_KEY || '';
 const BOT_TOKEN          = process.env.DC_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID            = process.env.DC_TELEGRAM_CHAT_ID || '';
 const CHANNEL_CHAT_ID    = process.env.DC_TELEGRAM_CHANNEL_CHAT_ID || '';
 
-if (!OPENROUTER_FREE_API_KEY) { console.error('ERROR: OPENROUTER_FREE_API_KEY is required'); process.exit(1); }
+if (!AGNES_AI_API_KEY && !OPENROUTER_FREE_API_KEY) {
+  console.error('ERROR: at least one of AGNES_AI_API_KEY / OPENROUTER_FREE_API_KEY is required');
+  process.exit(1);
+}
 if (!BOT_TOKEN)          { console.error('ERROR: DC_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
 if (!CHAT_ID && !CHANNEL_CHAT_ID) {
   console.error('ERROR: at least one of DC_TELEGRAM_CHAT_ID / DC_TELEGRAM_CHANNEL_CHAT_ID is required');
@@ -399,6 +403,40 @@ async function tryModelsSequentially(models, prompt) {
   throw new Error('All OpenRouter models failed');
 }
 
+// -- Agnes AI (first-priority provider) --------------------------------------
+// Tried before any OpenRouter free model. Falls through to the existing flow
+// (OpenRouter free → DeepSeek paid) on any failure.
+
+async function callAgnes(prompt) {
+  console.log('Trying Agnes AI...');
+  const response = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', {
+    signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${AGNES_AI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'agnes-2.0-flash',
+      max_tokens: MAX_TOKENS,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Agnes ${response.status}: ${err.slice(0, 200)}`);
+  }
+
+  const result = await response.json();
+  const content = (result.choices?.[0]?.message?.content || '').trim();
+  if (!content) throw new Error('Agnes returned empty response');
+  if (content.length < MIN_CONTENT_LENGTH) {
+    throw new Error(`Agnes response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+  }
+  return content;
+}
+
 // -- DeepSeek paid fallback ---------------------------------------------------
 // Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
 
@@ -521,16 +559,33 @@ async function main() {
   // Sort newest first
   fresh.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
-  const models = await fetchFreeModels();
-  console.log(`Trying up to ${models.length} models sequentially...`);
-
   const prompt   = buildPrompt(fresh);
   let   briefing;
-  try {
-    briefing = await tryModelsSequentially(models, prompt);
-  } catch {
-    // All free models failed — try DeepSeek as paid fallback
-    if (!DEEPSEEK_API_KEY) throw new Error('All free models failed and DEEPSEEK_API_KEY not configured');
+
+  // 1) Agnes AI (first priority)
+  if (AGNES_AI_API_KEY) {
+    try {
+      briefing = await callAgnes(prompt);
+      console.log('✓ Success: Agnes AI');
+    } catch (err) {
+      console.warn(`✗ Agnes AI: ${err.message.slice(0, 120)}`);
+    }
+  }
+
+  // 2) OpenRouter free models (existing order preserved)
+  if (!briefing && OPENROUTER_FREE_API_KEY) {
+    const models = await fetchFreeModels();
+    console.log(`Trying up to ${models.length} models sequentially...`);
+    try {
+      briefing = await tryModelsSequentially(models, prompt);
+    } catch (err) {
+      console.warn(`✗ OpenRouter free models: ${err.message.slice(0, 120)}`);
+    }
+  }
+
+  // 3) DeepSeek paid fallback (last resort)
+  if (!briefing) {
+    if (!DEEPSEEK_API_KEY) throw new Error('All upstream LLM providers failed and DEEPSEEK_API_KEY not configured');
     briefing = await callDeepSeek(prompt);
   }
 
