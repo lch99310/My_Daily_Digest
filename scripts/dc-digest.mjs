@@ -406,8 +406,33 @@ async function tryModelsSequentially(models, prompt) {
 // -- Agnes AI (first-priority provider) --------------------------------------
 // Tried before any OpenRouter free model. Falls through to the existing flow
 // (OpenRouter free → DeepSeek paid) on any failure.
+//
+// Agnes occasionally returns "Invalid model name" 400s for a model name that
+// it accepts on other concurrent requests (observed across simultaneous
+// dc/geopo/stock runs in the same minute). Treat that error — plus 429/5xx —
+// as transient and retry once before falling through.
+
+const AGNES_MAX_ATTEMPTS = 2;
+const AGNES_RETRY_DELAY  = 2_000;
+const AGNES_TRANSIENT_RE = /^Agnes (?:400|408|409|425|429|5\d\d)|Invalid model name|fetch failed|network|ECONN/i;
 
 async function callAgnes(prompt) {
+  let lastErr;
+  for (let attempt = 1; attempt <= AGNES_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await callAgnesOnce(prompt);
+    } catch (err) {
+      lastErr = err;
+      const transient = AGNES_TRANSIENT_RE.test(err.message);
+      if (!transient || attempt === AGNES_MAX_ATTEMPTS) throw err;
+      console.warn(`✗ Agnes attempt ${attempt}/${AGNES_MAX_ATTEMPTS} (transient): ${err.message.slice(0, 200)} — retrying in ${AGNES_RETRY_DELAY / 1000}s`);
+      await new Promise(r => setTimeout(r, AGNES_RETRY_DELAY));
+    }
+  }
+  throw lastErr;
+}
+
+async function callAgnesOnce(prompt) {
   console.log('Trying Agnes AI...');
   const response = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', {
     signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
@@ -425,7 +450,7 @@ async function callAgnes(prompt) {
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Agnes ${response.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Agnes ${response.status}: ${err.slice(0, 1000)}`);
   }
 
   const result = await response.json();
@@ -568,7 +593,7 @@ async function main() {
       briefing = await callAgnes(prompt);
       console.log('✓ Success: Agnes AI');
     } catch (err) {
-      console.warn(`✗ Agnes AI: ${err.message.slice(0, 120)}`);
+      console.warn(`✗ Agnes AI: ${err.message}`);
     }
   }
 
