@@ -61,7 +61,31 @@ export async function callLLMReliable(prompt, {
   throw new Error('All LLM providers failed (Agnes + DeepSeek + OpenRouter free)');
 }
 
-async function _callAgnes(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
+// Agnes occasionally returns "Invalid model name" 400s for a model name that
+// it accepts on other requests in the same minute (observed across simultaneous
+// dc/geopo/stock runs). Treat that error — plus 429/5xx — as transient and
+// retry once before falling through to the next provider.
+const AGNES_MAX_ATTEMPTS = 2;
+const AGNES_RETRY_DELAY  = 2_000;
+const AGNES_TRANSIENT_RE = /^Agnes (?:400|408|409|425|429|5\d\d)|Invalid model name|fetch failed|network|ECONN/i;
+
+async function _callAgnes(prompt, opts) {
+  let lastErr;
+  for (let attempt = 1; attempt <= AGNES_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await _callAgnesOnce(prompt, opts);
+    } catch (err) {
+      lastErr = err;
+      const transient = AGNES_TRANSIENT_RE.test(err.message);
+      if (!transient || attempt === AGNES_MAX_ATTEMPTS) throw err;
+      console.warn(`✗ Agnes attempt ${attempt}/${AGNES_MAX_ATTEMPTS} (transient): ${err.message.slice(0, 200)} — retrying in ${AGNES_RETRY_DELAY / 1000}s`);
+      await new Promise(r => setTimeout(r, AGNES_RETRY_DELAY));
+    }
+  }
+  throw lastErr;
+}
+
+async function _callAgnesOnce(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
   console.log('Calling Agnes AI...');
   const body = {
     model: 'agnes-2.0-flash',
