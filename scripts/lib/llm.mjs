@@ -29,7 +29,9 @@ export async function callLLMReliable(prompt, {
     try {
       return await _callAgnes(prompt, { maxTokens, minContentLength, apiKey: agnesKey, responseFormat });
     } catch (err) {
-      console.warn(`✗ Agnes: ${err.message.slice(0, 120)}`);
+      // Print full Agnes error — server includes the list of available models
+      // when it rejects a model name, and we want that visible in logs.
+      console.warn(`✗ Agnes: ${err.message}`);
     }
   }
 
@@ -80,7 +82,7 @@ async function _callAgnes(prompt, { maxTokens, minContentLength, apiKey, respons
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Agnes ${response.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Agnes ${response.status}: ${err.slice(0, 1000)}`);
   }
 
   const result = await response.json();

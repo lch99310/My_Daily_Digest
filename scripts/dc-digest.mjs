@@ -425,7 +425,7 @@ async function callAgnes(prompt) {
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Agnes ${response.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Agnes ${response.status}: ${err.slice(0, 1000)}`);
   }
 
   const result = await response.json();
@@ -568,7 +568,7 @@ async function main() {
       briefing = await callAgnes(prompt);
       console.log('✓ Success: Agnes AI');
     } catch (err) {
-      console.warn(`✗ Agnes AI: ${err.message.slice(0, 120)}`);
+      console.warn(`✗ Agnes AI: ${err.message}`);
     }
   }
 
