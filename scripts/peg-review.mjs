@@ -29,6 +29,7 @@ if (!CHAT_ID && !CHANNEL_CHAT_ID) {
 const __dirname        = dirname(fileURLToPath(import.meta.url));
 const STOCK_CFG_PATH   = resolve(__dirname, '../config/stock-tickers.json');
 const MACRO_CFG_PATH   = resolve(__dirname, '../config/macro-indicators.json');
+const FRAMEWORK_PATH   = resolve(__dirname, '../config/peg-framework.md');
 const NEWS_LOOKBACK_HOURS = 30 * 24;  // 30 days
 const NEWS_PER_TICKER     = 20;       // headlines fed to LLM per ticker
 
@@ -69,7 +70,7 @@ async function fetchCapexContext(macroConfig) {
 
 // -- LLM prompt ------------------------------------------------------------
 
-function buildPrompt({ tickers, newsByTicker, capexBlock, globals }) {
+function buildPrompt({ tickers, newsByTicker, capexBlock, globals, framework }) {
   const today = new Date().toISOString().slice(0, 10);
   const floor = globals.pegReview?.absoluteFloor ?? 1.0;
   const ceiling = globals.pegReview?.absoluteCeiling ?? 2.5;
@@ -125,30 +126,20 @@ ${newsLines}`;
   }).join('\n\n');
 
   return `你是 sell-side equity research 資深分析師，今天是 ${today}，月度檢視一組 AI 相關成長股的 PEG 估值倍數。
+PEG = 合理 P/E ÷ 預期成長率(%)；在我們的 CK 三步驟公式中，合理 P/E = 成長率% × PEG。
 
-# 評估框架
-PEG = 合理 P/E ÷ 預期成長率(%)。在我們的 CK 三步驟公式中，合理 P/E = 成長率% × PEG。
-PEG 數值反映以下三件事的綜合：
-  1. 成長品質與持續性（產品週期、TAM 擴張、競爭護城河）
-  2. 多重擴張潛力（市場願意為這類資產 pay up 的程度）
-  3. 風險偏好變化（macro/cycle/sentiment）
+# 估值框架（從 config/peg-framework.md 載入，反映最新分析共識）
 
-# Wall Street 慣用 PEG 區間 (你的參考錨)
-- AI 純成長龍頭 (CUDA / IP licensing): 1.8 - 2.2
-- AI 挑戰者: 1.6 - 1.8
-- AI 基建/電力 (機房、電網、核電): 1.5 - 1.8
-- AI 週期 (foundry / memory): 1.0 - 1.4
-
-# 基本面動能怎麼解讀 (cache-refresh 給的數據)
-- 成長預估下修 >3pp (例如 30% → 26%) → 通常 PEG 該下調 0.1-0.2
-- 成長預估上修 >3pp → PEG 可上調 0.1-0.2
-- EPS 連續上修 + FCF 連續上修 → quality momentum，PEG 可小幅上調
-- Beta 上升 >0.20 → 風險加大、市場視為更不穩，PEG 該下調
-- 基本面持平但新聞偏正 → PEG 維持或極小幅上調
-- 注意「成長預估」(growth5y) 比 EPS 變動更重要 — 預估反映 sell-side 對未來的看法
+${framework}
 
 # 任務
-綜合「30 天新聞素材」、「AI 巨頭 capex 趨勢」、「公司基本面動能」三類訊號，判斷每檔 PEG 是否需要月度調整。基本面動能 (尤其是成長預估變化) 應與新聞素材並重。
+綜合「30 天新聞素材」、「AI 巨頭 capex 趨勢」、「公司基本面動能（cache-refresh 數據）」三類訊號，加上上面的估值框架，判斷每檔 PEG 是否需要月度調整。
+
+特別注意：
+- 五因子方法論是判斷主軸；每檔的 PEG 應該對應到框架第 2 節的「總分 → PEG 區間」映射
+- 第 3 節給了個股具體錨點，可以直接對照
+- 第 4 節是動能 heuristics，明確說明「成長下修 >3pp → PEG -0.1~0.2」這類規則
+- 第 5 節風險清單若有觸發事件，要反映到 PEG 上
 
 # AI 巨頭 capex 趨勢 (sector context)
 ${capexBlock}
@@ -273,12 +264,18 @@ async function main() {
   console.log('Fetching AI capex context from SEC EDGAR...');
   const capexBlock = await fetchCapexContext(macroCfg);
 
-  console.log('Calling LLM for PEG recommendations (DeepSeek JSON mode)...');
+  console.log('Loading PEG framework from config/peg-framework.md...');
+  // Editable: when analysis evolves (v6 → v7 → ...), just edit the file.
+  // Prompt picks up the latest framework automatically next monthly run.
+  const framework = await readFile(FRAMEWORK_PATH, 'utf-8');
+
+  console.log('Calling LLM for PEG recommendations (Agnes → DeepSeek JSON mode)...');
   const prompt = buildPrompt({
     tickers: stockCfg.tickers,
     newsByTicker,
     capexBlock,
     globals: stockCfg.globals,
+    framework,
   });
   let raw;
   try {

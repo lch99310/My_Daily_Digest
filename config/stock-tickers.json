@@ -117,15 +117,20 @@
       "exchange": "US",
       "zhName": "Advanced Micro Devices",
       "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR MI400 OR Instinct)",
-      "description": "GPU/CPU 雙線挑戰者；MI400 432GB HBM4 在 Agentic AI 長上下文與多 agent 工作負載相對 NVIDIA 反而有記憶體優勢，EPYC 持續啃下伺服器 CPU 份額。",
-      "pegOverride": 1.8,
-      "pegRationale": "AI 挑戰者，搶 share 中但生態系與毛利仍落後 NVDA",
-      "pegLastChange": "2026-05-30",
+      "description": "GPU/CPU 雙線挑戰者；Q1 26 Data Center $5.8B (+57% YoY)；Helios 機架 H2 26 上市（MI400 432GB HBM4）；長上下文與多 agent 場景 vs NVIDIA 有記憶體優勢。",
+      "pegOverride": 1.7,
+      "pegRationale": "Q1 26 DC $5.8B (+57% YoY)；Helios 機架 H2 26；MI400 在長上下文場景反而受益",
+      "pegLastChange": "2026-06-09",
       "pegHistory": [
         {
           "date": "2026-05-30",
           "peg": 1.8,
           "reason": "初始設定：AI 挑戰者分類"
+        },
+        {
+          "date": "2026-06-09",
+          "peg": 1.7,
+          "reason": "Q1 26 DC $5.8B (+57% YoY)；Helios 機架 H2 26；MI400 在長上下文場景反而受益"
         }
       ],
       "cache": {
@@ -141,10 +146,10 @@
       "exchange": "US",
       "zhName": "Taiwan Semiconductor",
       "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\" OR CoWoS OR N2",
-      "description": "全球最先進製程晶圓代工龍頭；NVIDIA Rubin、AMD MI400、TPU v7 等 AI 加速器全部在此生產，CoWoS 是 HBM 整合的唯一商業化先進封裝方案。",
-      "pegOverride": 1.5,
-      "pegRationale": "製程獨占護城河；最低中國 IT 衝擊；氦氣 EUV 為新風險但短期可承受",
-      "pegLastChange": "2026-05-31",
+      "description": "全球最先進製程晶圓代工龍頭；NVIDIA Rubin、AMD MI400、TPU v7、AWS Trainium 等 AI 加速器全部在此生產；CoWoS 先進封裝產能緊俏到 2027，是 AI 鏈最確定的瓶頸。",
+      "pegOverride": 1.7,
+      "pegRationale": "製程獨占護城河 + CoWoS 緊到 2027；Q1 26 HPC 佔 61% 營收、2026 guidance >30%",
+      "pegLastChange": "2026-06-09",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -155,14 +160,19 @@
           "date": "2026-05-31",
           "peg": 1.5,
           "reason": "從 1.4 上修；製程獨占性 + CoWoS 唯一商業化方案的稀缺溢價"
+        },
+        {
+          "date": "2026-06-09",
+          "peg": 1.7,
+          "reason": "製程獨占護城河 + CoWoS 緊到 2027；Q1 26 HPC 佔 61% 營收、2026 guidance >30%"
         }
       ],
       "cache": {
         "beta": 1.22,
         "eps": 7.45,
         "fcfPerShare": 4.2,
-        "growth5y": 0.22,
-        "asOf": "2026-Q1"
+        "growth5y": 0.28,
+        "asOf": "2026-06-09"
       }
     },
     {
@@ -170,10 +180,10 @@
       "exchange": "US",
       "zhName": "Arm Holdings",
       "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\" OR \"AGI CPU\" OR Neoverse",
-      "description": "CPU 指令集授權商；Agentic AI 控制平面需 4× CPU/GW，AGI CPU 2H26 量產、Meta 為首客戶；IP licensing 模型有極高營運槓桿。",
-      "pegOverride": 2.2,
-      "pegRationale": "AGI CPU生態快速擴張，Oracle加入，上調",
-      "pegLastChange": "2026-06-02",
+      "description": "CPU 指令集授權商；AGI CPU 2026 H2 量產、Meta 為首客戶；2031 營收目標 $25B（vs FY25 ~$4B，6× 成長）；Agentic AI 控制平面需 4× CPU/GW。",
+      "pegOverride": 1.8,
+      "pegRationale": "從 2.2 下修；AGI CPU 2H26 才量產，多數 catalyst 在 2027 後，中段 quality compounder 估值較合理",
+      "pegLastChange": "2026-06-09",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -184,14 +194,19 @@
           "date": "2026-06-02",
           "peg": 2.2,
           "reason": "AGI CPU生態快速擴張，Oracle加入，上調"
+        },
+        {
+          "date": "2026-06-09",
+          "peg": 1.8,
+          "reason": "從 2.2 下修；AGI CPU 2H26 才量產，多數 catalyst 在 2027 後，中段 quality compounder 估值較合理"
         }
       ],
       "cache": {
         "beta": 1.65,
         "eps": 0.65,
         "fcfPerShare": 0.55,
-        "growth5y": 0.25,
-        "asOf": "2026-Q1"
+        "growth5y": 0.3,
+        "asOf": "2026-06-09"
       }
     },
     {
@@ -199,10 +214,10 @@
       "exchange": "US",
       "zhName": "Micron Technology",
       "searchKeywords": "Micron OR HBM3E OR HBM4 OR \"CHIPS Act\" memory",
-      "description": "美國本土唯一垂直整合 HBM + DRAM + NAND；HBM 是 Agentic AI 訓練算力的記憶體瓶頸，CHIPS Act 提供額外戰略保護。",
-      "pegOverride": 1.4,
-      "pegRationale": "HBM需求強勁但競爭加劇，小幅上調至週期上限",
-      "pegLastChange": "2026-06-02",
+      "description": "美國本土唯一垂直整合 HBM + DRAM + NAND；2026 HBM 已 sold out；Bernstein PT $330；CHIPS Act 戰略保護。",
+      "pegOverride": 1.5,
+      "pegRationale": "2026 HBM sold out + 美國本土唯一 HBM+DRAM+NAND 垂直整合；Bernstein PT $330",
+      "pegLastChange": "2026-06-09",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -218,6 +233,11 @@
           "date": "2026-06-02",
           "peg": 1.4,
           "reason": "HBM需求強勁但競爭加劇，小幅上調至週期上限"
+        },
+        {
+          "date": "2026-06-09",
+          "peg": 1.5,
+          "reason": "2026 HBM sold out + 美國本土唯一 HBM+DRAM+NAND 垂直整合；Bernstein PT $330"
         }
       ],
       "cache": {
@@ -229,14 +249,62 @@
       }
     },
     {
+      "symbol": "ALAB",
+      "exchange": "US",
+      "zhName": "Astera Labs",
+      "searchKeywords": "\"Astera Labs\" OR ALAB OR \"PCIe 6.0\" OR \"Scorpio AI Fabric\"",
+      "description": "PCIe 6.0 Retimer 業界首發 + Scorpio AI Fabric switch；Q1 26 營收 +93% YoY、GM 76.4%、non-GAAP OPM 36.2%；全球約 90% AI 伺服器使用其 HW/SW；但 5 客戶 = 90% 營收，集中度警示。",
+      "pegOverride": 1.9,
+      "pegRationale": "純度滿分（~95% AI 收入集中）+ GM 76% 邊際擴張極強；但 5 客戶集中度給折扣",
+      "pegLastChange": "2026-06-09",
+      "pegHistory": [
+        {
+          "date": "2026-06-09",
+          "peg": 1.9,
+          "reason": "初始設定：AI 機架內互聯純玩家"
+        }
+      ],
+      "cache": {
+        "beta": 2.2,
+        "eps": 1.5,
+        "fcfPerShare": 1.2,
+        "growth5y": 0.5,
+        "asOf": "2026-06-09"
+      }
+    },
+    {
+      "symbol": "MRVL",
+      "exchange": "US",
+      "zhName": "Marvell Technology",
+      "searchKeywords": "Marvell OR MRVL OR \"custom ASIC\" OR \"silicon photonics\"",
+      "description": "客製 ASIC（年化 ~$50B）+ CPO 光通訊雙引擎；NVIDIA 2026 投資 $2B 強化美國光源產業；但車用 Ethernet 業務 2025 已賣給 Infineon，AI 集中度提升但業務範圍收斂。",
+      "pegOverride": 1.5,
+      "pegRationale": "客製 ASIC + CPO 結構性受益；車用 Ethernet 出售後集中度提升但失去多元化緩衝",
+      "pegLastChange": "2026-06-09",
+      "pegHistory": [
+        {
+          "date": "2026-06-09",
+          "peg": 1.5,
+          "reason": "初始設定：AI 網路 / 客製矽"
+        }
+      ],
+      "cache": {
+        "beta": 1.7,
+        "eps": 2.0,
+        "fcfPerShare": 1.8,
+        "growth5y": 0.3,
+        "asOf": "2026-06-09"
+      }
+    },
+    {
       "symbol": "VRT",
       "exchange": "US",
       "zhName": "Vertiv Holdings",
       "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\" OR Liebert",
-      "description": "資料中心電源 + 液冷基建龍頭；Agentic AI 機櫃從 80kW 推到 600kW，水冷與配電解決方案是直接最大受益方。",
-      "pegOverride": 2,
-      "pegRationale": "AI機櫃功率密度提升直接受益，上調反映強勁動能",
-      "pegLastChange": "2026-06-02",
+      "description": "資料中心電源 + 液冷基建龍頭；backlog $12.45B (+80.8% YoY)、Q1 26 EPS +83%；600kW 機櫃時代直接最大受益方；與 NVIDIA 共同開發 AI Factory 參考設計。",
+      "pegOverride": 1.9,
+      "pegRationale": "backlog 校正至 $12.45B (+80.8% YoY)；Q1 EPS +83%；2026 guidance 上修到 $13.5-14B",
+      "pegLastChange": "2026-06-09",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -252,6 +320,11 @@
           "date": "2026-06-02",
           "peg": 2,
           "reason": "AI機櫃功率密度提升直接受益，上調反映強勁動能"
+        },
+        {
+          "date": "2026-06-09",
+          "peg": 1.9,
+          "reason": "backlog 校正至 $12.45B (+80.8% YoY)；Q1 EPS +83%；2026 guidance 上修到 $13.5-14B"
         }
       ],
       "cache": {
@@ -263,91 +336,14 @@
       }
     },
     {
-      "symbol": "GEV",
-      "exchange": "US",
-      "zhName": "GE Vernova",
-      "searchKeywords": "\"GE Vernova\" OR Vernova OR \"gas turbine\"",
-      "description": "重型燃氣輪機 + 電網設備龍頭；AI 算力需求推動天然氣電廠新建與電網升級，backlog $163B 鎖定能見度至 2030+。",
-      "pegOverride": 1.8,
-      "pegRationale": "$163B backlog 鎖定能見度至 2030+；變壓器荒結構性受益",
-      "pegLastChange": "2026-05-31",
-      "pegHistory": [
-        {
-          "date": "2026-05-30",
-          "peg": 1.6,
-          "reason": "初始設定：AI 基建/電力分類"
-        },
-        {
-          "date": "2026-05-31",
-          "peg": 1.8,
-          "reason": "從 1.6 上修；$163B backlog + 24GW 燃氣輪機產能擴張延伸至 2030+"
-        }
-      ],
-      "cache": {
-        "beta": 1.45,
-        "eps": 4.5,
-        "fcfPerShare": 3.2,
-        "growth5y": 0.2,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "ETN",
-      "exchange": "US",
-      "zhName": "Eaton Corp",
-      "searchKeywords": "\"Eaton Corp\" OR \"Eaton Corporation\" OR \"Boyd Thermal\"",
-      "description": "電力管理與配電設備跨國龍頭；資料中心 UPS、母線槽、開關櫃直接受益，2024 收購 Boyd Thermal $9.5B 強化液冷布局。",
-      "pegOverride": 1.7,
-      "pegRationale": "quality compounder + 變壓器 + 液冷三引擎；完全免疫中國衝擊",
-      "pegLastChange": "2026-05-30",
-      "pegHistory": [
-        {
-          "date": "2026-05-30",
-          "peg": 1.7,
-          "reason": "初始設定：AI 基建/電力分類"
-        }
-      ],
-      "cache": {
-        "beta": 1.1,
-        "eps": 11.5,
-        "fcfPerShare": 9.8,
-        "growth5y": 0.13,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "VST",
-      "exchange": "US",
-      "zhName": "Vistra Corp",
-      "searchKeywords": "\"Vistra Corp\" OR \"Vistra Energy\" OR \"Comanche Peak\"",
-      "description": "獨立發電商 + 核電機隊（Comanche Peak）；AI 直購電 (PPA) 需求暴增使既有核電廠資產價值重估。",
-      "pegOverride": 1.5,
-      "pegRationale": "AI PPA 受益但 IPP 屬性 vs CEG 純核電溢價較低",
-      "pegLastChange": "2026-05-30",
-      "pegHistory": [
-        {
-          "date": "2026-05-30",
-          "peg": 1.5,
-          "reason": "初始設定：AI 基建/電力分類"
-        }
-      ],
-      "cache": {
-        "beta": 1.3,
-        "eps": 5.8,
-        "fcfPerShare": 4.5,
-        "growth5y": 0.18,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
       "symbol": "CEG",
       "exchange": "US",
       "zhName": "Constellation Energy",
       "searchKeywords": "\"Constellation Energy\" OR \"Three Mile Island\" OR \"nuclear PPA\"",
-      "description": "美國最大核電廠運營商（22 座反應堆 ~33GW）；24×7 firm power 是 hyperscaler 跑 AI 工作負載唯一可靠的無碳電力來源，已簽 MSFT 20 年 PPA。",
-      "pegOverride": 1.5,
-      "pegRationale": "二次發行短期壓力，核電長期價值不變，微幅下調",
-      "pegLastChange": "2026-06-02",
+      "description": "美國最大核電廠運營商（22 座反應堆 ~33GW）；CEO 公開承諾 base earnings growth 20%+ 至 2029；TMI 給 Microsoft 20 年 PPA；24/7 firm power 是 hyperscaler AI 工作負載唯一可靠來源。",
+      "pegOverride": 1.8,
+      "pegRationale": "CEO 公開承諾 base earnings growth 20%+ 至 2029；FY26 EPS guidance $11-12；TMI 給 Microsoft 20 年 PPA",
+      "pegLastChange": "2026-06-09",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -363,14 +359,19 @@
           "date": "2026-06-02",
           "peg": 1.5,
           "reason": "二次發行短期壓力，核電長期價值不變，微幅下調"
+        },
+        {
+          "date": "2026-06-09",
+          "peg": 1.8,
+          "reason": "CEO 公開承諾 base earnings growth 20%+ 至 2029；FY26 EPS guidance $11-12；TMI 給 Microsoft 20 年 PPA"
         }
       ],
       "cache": {
         "beta": 1.25,
         "eps": 9.2,
         "fcfPerShare": 6.5,
-        "growth5y": 0.16,
-        "asOf": "2026-Q1"
+        "growth5y": 0.2,
+        "asOf": "2026-06-09"
       }
     },
     {
@@ -400,6 +401,30 @@
         "fcfPerShare": 1.8,
         "growth5y": 0.2,
         "asOf": "2026-Q1"
+      }
+    },
+    {
+      "symbol": "HSAI",
+      "exchange": "US",
+      "zhName": "Hesai Group",
+      "searchKeywords": "Hesai OR HSAI OR \"禾賽\" OR \"Hesai Technology\"",
+      "description": "中國 LiDAR 全球龍頭（車載 37-39% 市占、robotaxi 60-70%）；Morgan Stanley Humanoid Tech 25 唯一 LiDAR 公司；Mercedes L3 戰略 supplier；Q1 26 出貨 +141% YoY 並轉盈利；2026 全年指引 3-3.5M 台。",
+      "pegOverride": 1.7,
+      "pegRationale": "Physical AI 純度最高的 LiDAR；機器人 + 自駕雙曝光；China ADR 折扣稍打低於同分純玩家",
+      "pegLastChange": "2026-06-09",
+      "pegHistory": [
+        {
+          "date": "2026-06-09",
+          "peg": 1.7,
+          "reason": "初始設定：Physical AI 感測器純玩家"
+        }
+      ],
+      "cache": {
+        "beta": 1.8,
+        "eps": 0.1,
+        "fcfPerShare": -0.2,
+        "growth5y": 0.45,
+        "asOf": "2026-06-09"
       }
     },
     {
