@@ -24,14 +24,14 @@ if (!CHAT_ID && !CHANNEL_CHAT_ID) {
   process.exit(1);
 }
 
-const MAX_TOKENS  = 6000;
+const MAX_TOKENS  = 8500;
 const OUTPUT_FILE = '/tmp/dc-briefing.md';
 
-// Minimum acceptable response length. A full briefing (12 cards across
-// APAC / Australia / ROW / Bytedance + summary) must be at least ~2000
-// chars; anything shorter means the model truncated or couldn't follow
-// the format.
-const MIN_CONTENT_LENGTH = 2000;
+// Minimum acceptable response length. A full briefing (19 cards across
+// APAC×5 / Australia×5 / ROW×3 / AI×Energy×3 / Bytedance×3 + summary)
+// must be at least ~3000 chars; anything shorter means the model
+// truncated or couldn't follow the format.
+const MIN_CONTENT_LENGTH = 3000;
 
 // Data center industry RSS feeds — no API key needed
 const NEWS_FEEDS = [
@@ -40,6 +40,15 @@ const NEWS_FEEDS = [
   { name: 'DCK',          url: 'https://www.datacenterknowledge.com/rss.xml' },
   { name: 'TechDay Asia', url: 'https://datacenternews.asia/feed' },
   { name: 'DC Post',      url: 'https://datacenterpost.com/feed/' },
+
+  // Hyperscaler trackers — global English locale to catch worldwide
+  // hyperscaler moves (PPAs, nuclear deals, region expansions). These
+  // feed the cross-region "hyperscaler ≥3 stories/day" rule and the
+  // AI×Energy card.
+  { name: 'AWS Infra',          url: 'https://news.google.com/rss/search?q=when:24h+%22AWS%22+(%22data+center%22+OR+%22data+centre%22+OR+PPA+OR+nuclear+OR+Susquehanna)&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'Microsoft Infra',    url: 'https://news.google.com/rss/search?q=when:24h+%22Microsoft%22+(%22data+center%22+OR+%22data+centre%22+OR+PPA+OR+%22Three+Mile+Island%22+OR+Helion)&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'Google Cloud Infra', url: 'https://news.google.com/rss/search?q=when:24h+%22Google%22+(%22data+center%22+OR+%22data+centre%22+OR+PPA+OR+Kairos+OR+SMR+OR+%2224%2F7+CFE%22)&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'Meta Infra',         url: 'https://news.google.com/rss/search?q=when:24h+%22Meta%22+(%22data+center%22+OR+%22data+centre%22+OR+Llama+OR+Hyperion+OR+PPA)&hl=en-US&gl=US&ceid=US:en' },
 
   // Australia-focused company trackers — Google News RSS proxy (AU locale).
   // These surface both corporate press releases and media coverage, so a
@@ -55,11 +64,32 @@ const NEWS_FEEDS = [
   { name: 'Macquarie Tech',     url: 'https://news.google.com/rss/search?q=when:24h+%22Macquarie+Technology+Group%22&hl=en-AU&gl=AU&ceid=AU:en' },
   { name: 'Vocus',              url: 'https://news.google.com/rss/search?q=when:24h+%22Vocus%22+Australia&hl=en-AU&gl=AU&ceid=AU:en' },
 
+  // Tier 1 — emerging AU operators + sovereign DC track
+  { name: 'Firmus',             url: 'https://news.google.com/rss/search?q=when:24h+%22Firmus%22+(%22data+centre%22+OR+%22data+center%22+OR+%22AI+factory%22+OR+Tasmania+OR+Soluna)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'CDC Data Centres',   url: 'https://news.google.com/rss/search?q=when:24h+%22CDC+Data+Centres%22&hl=en-AU&gl=AU&ceid=AU:en' },
+
+  // Tier 1 — AU sustainability rating + NSW power infrastructure
+  { name: 'NABERS DC',          url: 'https://news.google.com/rss/search?q=when:24h+NABERS+(%22data+centre%22+OR+%22data+center%22)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'NSW REZ',            url: 'https://news.google.com/rss/search?q=when:24h+%22Renewable+Energy+Zone%22+NSW&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Ausgrid',            url: 'https://news.google.com/rss/search?q=when:24h+%22Ausgrid%22+(%22data+centre%22+OR+%22data+center%22+OR+%22grid+connection%22+OR+substation)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Endeavour Energy',   url: 'https://news.google.com/rss/search?q=when:24h+%22Endeavour+Energy%22+(%22data+centre%22+OR+%22data+center%22+OR+%22grid+connection%22)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'WS Aerotropolis',    url: 'https://news.google.com/rss/search?q=when:24h+%22Western+Sydney+Aerotropolis%22+(%22data+centre%22+OR+%22data+center%22+OR+digital+OR+infrastructure)&hl=en-AU&gl=AU&ceid=AU:en' },
+
   // AU energy regulator/operator — DC power supply, large-load connections,
   // ISP updates. AEMC (rule maker) and AEMO (operator) both block bot
   // access on their sites, so we ride on media coverage via Google News.
   { name: 'AEMC',               url: 'https://news.google.com/rss/search?q=when:24h+(AEMC+OR+%22Australian+Energy+Market+Commission%22)+(%22data+centre%22+OR+%22data+center%22)&hl=en-AU&gl=AU&ceid=AU:en' },
   { name: 'AEMO',               url: 'https://news.google.com/rss/search?q=when:24h+(AEMO+OR+%22Australian+Energy+Market+Operator%22)+(%22data+centre%22+OR+%22data+center%22)&hl=en-AU&gl=AU&ceid=AU:en' },
+
+  // Tier 2 — AU energy x DC intersection (PPA counterparties, firming, coal phase-out)
+  { name: 'Snowy Hydro',        url: 'https://news.google.com/rss/search?q=when:24h+(%22Snowy+2.0%22+OR+%22Snowy+Hydro%22)+(%22pumped+hydro%22+OR+grid+OR+NEM+OR+delay)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Spark Renewables',   url: 'https://news.google.com/rss/search?q=when:24h+%22Spark+Renewables%22&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'Climate Active',     url: 'https://news.google.com/rss/search?q=when:24h+%22Climate+Active%22+(%22data+centre%22+OR+%22data+center%22+OR+certification)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'AU Coal Phase-out',  url: 'https://news.google.com/rss/search?q=when:24h+(%22Eraring%22+OR+%22Liddell%22+OR+%22Bayswater%22)+(closure+OR+retirement+OR+extension+OR+grid)&hl=en-AU&gl=AU&ceid=AU:en' },
+
+  // Tier 3 — global PPA/regulatory trend signals
+  { name: 'BloombergNEF PPA',   url: 'https://news.google.com/rss/search?q=when:24h+%22BloombergNEF%22+(%22corporate+PPA%22+OR+PPA+OR+renewable)&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'FERC DC',            url: 'https://news.google.com/rss/search?q=when:24h+FERC+(%22behind+the+meter%22+OR+%22co-location%22+OR+hyperscaler+OR+%22data+center%22)&hl=en-US&gl=US&ceid=US:en' },
 ];
 
 // -- RSS parser (no npm) -----------------------------------------------------
@@ -114,7 +144,7 @@ function buildPrompt(articles) {
   const sourceList = sourceSet.join('、');
 
   const articleList = articles
-    .slice(0, 80)
+    .slice(0, 120)
     .map((a, i) => {
       const src = a.source ? ` [來源：${a.source}]` : '';
       return `${i + 1}.${src} ${a.title}${a.desc ? '\n   ' + a.desc : ''}`;
@@ -137,17 +167,19 @@ ${articleList}
   - 句子俐落、資訊密度高
 - **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「DCD、DCK」）。不得自行編造來源。
 - **資料取材**：要選擇對資料中心產業影響大的事件（包含：新建/擴建案、併購、技術突破、政策法規、供電/冷卻/AI算力相關、雲端服務商動態等）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期產業動態的掌握，但當前卡片仍須對應到真實的新聞事件。
+- **Hyperscaler 強制條款（重要）**：每日整份簡報必須至少**累計 3 則**事件與 AWS、Microsoft、Google、Meta 四家其中之一直接相關（可分散在 APAC / 澳洲 / ROW / AI×能源 任一卡片中累計，不要求集中）。理由：這四家是讀者重點追蹤對象。若上方素材四家動態不足 3 則，可結合你對近期已公開的真實事件補充，但仍須對應到真實新聞；並在「💡 總結」段落點名提及本日四家中誰最積極/最沉默。
 - **地理分區與公司追蹤規則（嚴格遵守）**：
-  - 🏗️「APAC 資料中心動態 (Top 3)」：**僅限**地理上發生在亞太地區（APAC），但**不含澳洲與紐西蘭**的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度等亞太區域。
-  - 🇦🇺「澳洲資料中心動態 (Top 3)」：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。**取材來源不受限制**：只要事件地點在澳洲/紐西蘭，無論是來自 DCD、DCK、TechDay Asia、DC Post 等綜合產業媒體，或是 NEXTDC、AirTrunk、DCI Data Centers、Equinix AU、Digital Realty AU、Global Switch、Goodman Group、Macquarie Tech、Vocus 等公司專屬 feed，都應優先放入本區；重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。**能源/電網層面**：AEMC（Australian Energy Market Commission，市場規則制定者）與 AEMO（Australian Energy Market Operator，電網與市場運營者）相關的大型負載（large load）併網、ISP（Integrated System Plan）、市場規則變更等，只要牽涉資料中心用電或選址，都屬於本區高優先事件。若素材不足 3 則，可結合你對近期澳洲資料中心產業動態的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
+  - 🏗️「APAC 資料中心動態 (Top 5)」：**僅限**地理上發生在亞太地區（APAC），但**不含澳洲與紐西蘭**的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度等亞太區域。若素材不足 5 則，可結合近期真實重大事件補充。
+  - 🇦🇺「澳洲資料中心動態 (Top 5)」：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。**取材來源不受限制**：只要事件地點在澳洲/紐西蘭，無論是來自 DCD、DCK、TechDay Asia、DC Post 等綜合產業媒體，或是 NEXTDC、AirTrunk、DCI Data Centers、Equinix AU、Digital Realty AU、Global Switch、Goodman Group、Macquarie Tech、Vocus、Firmus、CDC Data Centres 等公司專屬 feed，都應優先放入本區；重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group、**Firmus（Tasmania/Victoria 液冷 AI factory 新興業者）**、**CDC Data Centres（主權政府聚焦）** 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。**能源/電網層面**：AEMC、AEMO、Ausgrid、Endeavour Energy 等大型負載併網、ISP、市場規則變更，以及 **NABERS for Data Centres** 評等、**NSW REZ（Renewable Energy Zone）** 進度、**Western Sydney Aerotropolis** 規劃，只要牽涉資料中心用電或選址，都屬於本區高優先事件。**力求 5 張卡之間在子題上分散**：理想分配是 2 則業者動態 + 1 則電網/接入 + 1 則 NABERS/REZ/政策 + 1 則 Aerotropolis/聚落新建；若某類素材缺乏可調整，但避免 5 張全部都是同一家業者的 ASX 公告。若素材不足 5 則，可結合你對近期澳洲資料中心產業動態的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
   - 🌐「ROW 資料中心動態 (Top 3)」：**僅限**地理上發生在**非 APAC 且非澳洲/紐西蘭**地區的資料中心產業重大事件。ROW = Rest of World，包含：北美、歐洲、中東、非洲、拉丁美洲等。
+  - ⚡「AI 算力 × 能源動態 (Top 3)」：**跨地理區**的「DC × 電力」主題卡。**僅限**以下類型事件：①hyperscaler 簽署的大規模 PPA（再生能源或核能）；②核能 restart / SMR / 核融合相關交易（Constellation、Talen、Kairos、Helion、X-energy、Oklo 等）；③電網層級的監管變化（FERC behind-the-meter 裁決、AEMO ISP 更新、Capacity Investment Scheme 等）；④BloombergNEF 等權威機構的企業 PPA / 清潔能源排名與分析；⑤大型資料中心 PUE / 冷卻技術突破與其能源影響。本卡與地理區的判斷標準不同：**只要主軸是「電力如何餵養 AI 算力」就放這裡**，可跨越地理區。**重要**：不要與其他卡片重複事件；同一則新聞若同時符合地理區與本卡，優先放本卡。若素材不足 3 則，可結合你對近期重大趨勢的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
   - 🔥「Bytedance / TikTok 資料中心動態 (Top 3)」：**僅限**與 ByteDance、TikTok、抖音這家公司相關的資料中心重大消息（不限地區，只看是否與該公司有關）。從上方素材中挑出相關新聞；若素材不足 3 則，可結合你對近期 ByteDance 資料中心動態的掌握補充，但仍須對應到真實事件。如果確實完全無相關消息，則寫「本日無相關更新」。
-  - APAC、澳洲、ROW 三區的分區判斷標準是事件的**地理發生地點**；同一事件只能出現在其中一區，不得重複。Bytedance / TikTok 的判斷標準是**是否與該公司相關**，不限地區，可與地理區並列。
+  - APAC、澳洲、ROW 三區的分區判斷標準是事件的**地理發生地點**；同一事件只能出現在其中一區，不得重複。AI×能源、Bytedance/TikTok 的判斷標準是**主題或公司**，不限地區，但同一事件不得同時出現在地理區與這兩張主題卡——主題卡優先。
 
 
 ## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
 
-🏗️ APAC 資料中心動態 (Top 3)
+🏗️ APAC 資料中心動態 (Top 5)
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
@@ -167,7 +199,31 @@ ${articleList}
 影響：{80 至 120 字}
 來源：{媒體名稱}
 
-🇦🇺 澳洲資料中心動態 (Top 3)
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+🇦🇺 澳洲資料中心動態 (Top 5)
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
@@ -209,6 +265,28 @@ ${articleList}
 影響：{80 至 120 字}
 來源：{媒體名稱}
 
+⚡ AI 算力 × 能源動態 (Top 3)
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字，聚焦 PPA / SMR / 核能 / 電網監管 / 冷卻能效突破}
+影響：{80 至 120 字，說明對 hyperscaler 電力策略或整體 DC 產業電力供需的影響}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+影響：{80 至 120 字}
+來源：{媒體名稱}
+
+{如確實完全無任何 AI 算力×能源相關消息，以上卡片替換為：「本日無相關更新」}
+
 🔥 Bytedance / TikTok 資料中心動態 (Top 3)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -233,6 +311,8 @@ ${articleList}
 
 💡 總結與產業趨勢觀察
 快速總結：{2 至 3 句話，綜合分析今日資料中心產業整體動態，點出最關鍵的趨勢}
+
+Hyperscaler 觀察：{1 至 2 句話，點名本日 AWS / Microsoft / Google / Meta 四家中誰最積極、誰最沉默，並提及具體事件}
 
 關鍵趨勢：
 • {趨勢一，帶具體事件}
