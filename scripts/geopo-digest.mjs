@@ -50,11 +50,13 @@ const NEWS_FEEDS = [
   { name: 'Financial Times',    url: 'https://www.ft.com/world?format=rss' },
   { name: 'Nikkei Asia',        url: 'https://asia.nikkei.com/rss/feed/nar' },
   { name: 'SCMP China',         url: 'https://www.scmp.com/rss/91/feed' },
-  { name: '產經新聞',            url: 'https://www.sankei.com/rss/news/flash.xml' },
 
-  // No public native RSS — Google News with `site:` operator (allinurl: is dead)
+  // No public native RSS (or it 404s/403s) — Google News with `site:` operator.
+  // We previously used `allinurl:` here; Google nerfed that around 2026-05-28
+  // and it now returns 0. `site:` still works as of this commit.
   { name: 'Bloomberg',          url: 'https://news.google.com/rss/search?q=when:24h+site:bloomberg.com&hl=en-US&gl=US&ceid=US:en' },
   { name: '讀賣新聞',            url: 'https://news.google.com/rss/search?q=when:24h+site:yomiuri.co.jp&hl=ja&gl=JP&ceid=JP:ja' },
+  { name: '產經新聞',            url: 'https://news.google.com/rss/search?q=when:24h+site:sankei.com&hl=ja&gl=JP&ceid=JP:ja' },
 
   // Military / defense specialists
   { name: 'The War Zone',       url: 'https://www.twz.com/feed/' },
@@ -62,11 +64,14 @@ const NEWS_FEEDS = [
   { name: 'Defense One',        url: 'https://www.defenseone.com/rss/all/' },
   { name: '鳳凰軍事',            url: 'https://news.google.com/rss/search?q=when:24h+%E5%87%A4%E5%87%B0%E5%86%9B%E4%BA%8B&hl=zh-CN&gl=CN&ceid=CN:zh-Hans' },
 
-  // Think tanks & official sources
-  { name: 'CSIS',               url: 'https://www.csis.org/rss/all.xml' },
-  { name: 'ISW',                url: 'https://www.understandingwar.org/rss.xml' },
-  { name: 'Crisis Group',       url: 'https://www.crisisgroup.org/rss/all' },
-  { name: '台灣國防部',          url: 'https://www.mnd.gov.tw/rss.aspx' },
+  // Think tanks & official sources — direct RSS endpoints either 404 or
+  // return Cloudflare 403s for non-browser User-Agents, so we proxy through
+  // Google News `site:` queries instead. Lower fidelity (snippets, not full
+  // titles) but reliably reachable.
+  { name: 'CSIS',               url: 'https://news.google.com/rss/search?q=when:24h+site:csis.org&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'ISW',                url: 'https://news.google.com/rss/search?q=when:24h+site:understandingwar.org&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'Crisis Group',       url: 'https://news.google.com/rss/search?q=when:24h+site:crisisgroup.org&hl=en-US&gl=US&ceid=US:en' },
+  { name: '台灣國防部',          url: 'https://news.google.com/rss/search?q=when:24h+site:mnd.gov.tw&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
 
   // Regional European / Australian coverage
   { name: 'Euronews',           url: 'https://www.euronews.com/rss' },
@@ -77,18 +82,23 @@ const NEWS_FEEDS = [
 
 function parseRSSItems(xml) {
   const items = [];
-  const itemRe  = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/g;
-  const titleRe = /<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/;
-  const descRe  = /<(?:description|summary|content(?::[^>]*)?)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/(?:description|summary|content(?::[^>]*)?)>/;
+  // All four tag patterns accept optional attributes — Atom feeds routinely
+  // write `<entry xml:base=...>`, `<title type="text">`, `<updated foo="bar">`
+  // etc., and a bare `<entry>` regex silently misses every item. Nikkei Asia
+  // is the recurring offender that surfaced this.
+  const itemRe  = /<(?:item|entry)(?:\s[^>]*)?>([\s\S]*?)<\/(?:item|entry)>/g;
+  const titleRe = /<title(?:\s[^>]*)?>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/;
+  const descRe  = /<(description|summary|content(?::[^>]*)?)(?:\s[^>]*)?>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/;
   const linkRe  = /<link(?:\s[^>]*)?>([^<\s]+)<\/link>|<link[^>]+href="([^"]+)"/;
   // RSS 2.0 uses <pubDate>, Atom uses <published>/<updated>, Dublin Core uses <dc:date>.
-  const dateRe  = /<(pubDate|published|updated|dc:date)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/;
+  const dateRe  = /<(pubDate|published|updated|dc:date)(?:\s[^>]*)?>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/;
 
   let m;
   while ((m = itemRe.exec(xml)) !== null) {
     const block = m[1];
     const title = (titleRe.exec(block)?.[1] || '').replace(/<[^>]+>/g, '').trim();
-    const desc  = (descRe.exec(block)?.[1]  || '').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').trim().slice(0, 250);
+    // descRe now captures the tag name in group 1 and content in group 2.
+    const desc  = (descRe.exec(block)?.[2]  || '').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').trim().slice(0, 250);
     const lm    = linkRe.exec(block);
     const link  = (lm?.[1] || lm?.[2] || '').trim();
     const dm    = dateRe.exec(block);
