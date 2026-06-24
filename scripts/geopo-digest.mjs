@@ -33,26 +33,40 @@ const OUTPUT_FILE = '/tmp/geopo-briefing.md';
 // let the race continue to a larger model.
 const MIN_CONTENT_LENGTH = 2000;
 
-// Free RSS feeds for geopolitical news — no API key needed
+// Free RSS feeds for geopolitical news — no API key needed.
+//
+// Feed sourcing rules (learned the hard way):
+//   1. Prefer the publisher's native RSS over Google News wrappers.
+//   2. Google News `allinurl:` queries were silently nerfed around 2026-05-28 —
+//      they now return 0 items consistently. Use `site:` instead (still works),
+//      or fall back to a keyword search like the 鳳凰軍事 entry.
+//   3. Sources that return 0 for many consecutive runs get dropped, not kept
+//      "just in case" — empty feeds add latency without adding signal.
 const NEWS_FEEDS = [
-  // General international news
-  { name: 'Reuters World',      url: 'https://feeds.reuters.com/reuters/worldNews' },
+  // General international news — native RSS
   { name: 'BBC World',          url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
   { name: 'Al Jazeera',         url: 'https://www.aljazeera.com/xml/rss/all.xml' },
-  { name: 'Financial Times',    url: 'https://news.google.com/rss/search?q=when:24h+allinurl:ft.com&hl=en-US&gl=US&ceid=US:en' },
-  { name: 'SCMP',               url: 'https://news.google.com/rss/search?q=when:24h+allinurl:scmp.com&hl=en-US&gl=US&ceid=US:en' },
-  { name: 'WSJ',                url: 'https://news.google.com/rss/search?q=when:24h+allinurl:wsj.com&hl=en-US&gl=US&ceid=US:en' },
-  { name: 'Bloomberg',          url: 'https://news.google.com/rss/search?q=when:24h+allinurl:bloomberg.com&hl=en-US&gl=US&ceid=US:en' },
-  { name: 'Nikkei Asia',        url: 'https://news.google.com/rss/search?q=when:24h+allinurl:asia.nikkei.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'WSJ World',          url: 'https://feeds.a.dj.com/rss/RSSWorldNews.xml' },
+  { name: 'Financial Times',    url: 'https://www.ft.com/world?format=rss' },
+  { name: 'Nikkei Asia',        url: 'https://asia.nikkei.com/rss/feed/nar' },
+  { name: 'SCMP China',         url: 'https://www.scmp.com/rss/91/feed' },
+  { name: '產經新聞',            url: 'https://www.sankei.com/rss/news/flash.xml' },
+
+  // No public native RSS — Google News with `site:` operator (allinurl: is dead)
+  { name: 'Bloomberg',          url: 'https://news.google.com/rss/search?q=when:24h+site:bloomberg.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: '讀賣新聞',            url: 'https://news.google.com/rss/search?q=when:24h+site:yomiuri.co.jp&hl=ja&gl=JP&ceid=JP:ja' },
 
   // Military / defense specialists
   { name: 'The War Zone',       url: 'https://www.twz.com/feed/' },
-  { name: 'ミリレポ',            url: 'https://news.google.com/rss/search?q=when:24h+%E3%83%9F%E3%83%AA%E3%83%AC%E3%83%9D&hl=ja&gl=JP&ceid=JP:ja' },
+  { name: 'USNI News',          url: 'https://news.usni.org/feed' },
+  { name: 'Defense One',        url: 'https://www.defenseone.com/rss/all/' },
   { name: '鳳凰軍事',            url: 'https://news.google.com/rss/search?q=when:24h+%E5%87%A4%E5%87%B0%E5%86%9B%E4%BA%8B&hl=zh-CN&gl=CN&ceid=CN:zh-Hans' },
 
-  // Japanese mainstream press (Google News JP locale — site filter)
-  { name: '產經新聞',            url: 'https://news.google.com/rss/search?q=when:24h+allinurl:sankei.com&hl=ja&gl=JP&ceid=JP:ja' },
-  { name: '讀賣新聞',            url: 'https://news.google.com/rss/search?q=when:24h+allinurl:yomiuri.co.jp&hl=ja&gl=JP&ceid=JP:ja' },
+  // Think tanks & official sources
+  { name: 'CSIS',               url: 'https://www.csis.org/rss/all.xml' },
+  { name: 'ISW',                url: 'https://www.understandingwar.org/rss.xml' },
+  { name: 'Crisis Group',       url: 'https://www.crisisgroup.org/rss/all' },
+  { name: '台灣國防部',          url: 'https://www.mnd.gov.tw/rss.aspx' },
 
   // Regional European / Australian coverage
   { name: 'Euronews',           url: 'https://www.euronews.com/rss' },
