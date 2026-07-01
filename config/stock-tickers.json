@@ -82,7 +82,7 @@
       ],
       "cache": {
         "beta": 1.05,
-        "eps": 8.0,
+        "eps": 8,
         "fcfPerShare": 5.5,
         "growth5y": 0.15,
         "asOf": "2026-Q1"
@@ -107,7 +107,7 @@
       "cache": {
         "beta": 0.92,
         "eps": 13.5,
-        "fcfPerShare": 8.0,
+        "fcfPerShare": 8,
         "growth5y": 0.14,
         "asOf": "2026-Q1"
       }
@@ -290,7 +290,7 @@
       ],
       "cache": {
         "beta": 1.7,
-        "eps": 2.0,
+        "eps": 2,
         "fcfPerShare": 1.8,
         "growth5y": 0.3,
         "asOf": "2026-06-09"
