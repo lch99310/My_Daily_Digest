@@ -14,9 +14,7 @@ on:
         required: false
         type: choice
         options:
-          - both
           - telegram
-          - email
           - stdout
 
 # Only one digest run at a time
@@ -61,11 +59,9 @@ jobs:
           OPENROUTER_FREE_API_KEY: ${{ secrets.OPENROUTER_FREE_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
-          DELIVERY_OVERRIDE: ${{ inputs.delivery_override || 'both' }}
+          DELIVERY_OVERRIDE: ${{ inputs.delivery_override || 'telegram' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
           node scripts/generate-digest.mjs
 
@@ -78,10 +74,8 @@ jobs:
         id: check-secrets
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           [[ -n "$TELEGRAM_BOT_TOKEN" ]] && echo "has_telegram=true" >> $GITHUB_OUTPUT || echo "has_telegram=false" >> $GITHUB_OUTPUT
-          [[ -n "$RESEND_API_KEY" ]]      && echo "has_email=true"    >> $GITHUB_OUTPUT || echo "has_email=false"    >> $GITHUB_OUTPUT
 
       # ------------------------------------------------------------------
       # 7. Deliver via Telegram
@@ -89,28 +83,12 @@ jobs:
       - name: Deliver via Telegram
         if: |
           steps.check-secrets.outputs.has_telegram == 'true' &&
-          inputs.delivery_override != 'email' &&
           inputs.delivery_override != 'stdout'
         run: |
           node scripts/deliver-telegram.js /tmp/follow-builders-digest.md
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        continue-on-error: true
-
-      # ------------------------------------------------------------------
-      # 8. Deliver via Email
-      # ------------------------------------------------------------------
-      - name: Deliver via Email
-        if: |
-          steps.check-secrets.outputs.has_email == 'true' &&
-          inputs.delivery_override != 'telegram' &&
-          inputs.delivery_override != 'stdout'
-        run: |
-          node scripts/deliver-email.js /tmp/follow-builders-digest.md
-        env:
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         continue-on-error: true
 
       # ------------------------------------------------------------------
