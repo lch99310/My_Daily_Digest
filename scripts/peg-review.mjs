@@ -87,11 +87,20 @@ function buildPrompt({ tickers, newsByTicker, capexBlock, globals, framework }) 
     // momentum, growth-rate revisions and beta drift — i.e. it can lower
     // PEG when growth estimates compress, raise it when EPS surprises up.
     const c = t.cache || {};
+    const a = t.analysisAssumptions || {};
     const fundLine = [
       `EPS(TTM) ${c.eps ?? '—'}`,
       `FCF/sh ${c.fcfPerShare ?? '—'}`,
       `Beta ${c.beta ?? '—'}`,
       `5Y 成長預估 ${Number.isFinite(c.growth5y) ? (c.growth5y * 100).toFixed(1) + '%' : '—'}`,
+    ].join(' · ');
+    const assumptionLine = [
+      `EPS ${a.eps ?? '—'}`,
+      `FCF/sh ${a.fcfPerShare ?? '—'}`,
+      `Beta ${a.beta ?? '—'}`,
+      `5Y 成長假設 ${Number.isFinite(a.growth5y) ? (a.growth5y * 100).toFixed(1) + '%' : '—'}`,
+      `PEG ${a.pegMultiplier ?? t.pegOverride ?? '—'}`,
+      `來源 ${a.source ?? '—'} ${a.asOf ?? ''}`.trim(),
     ].join(' · ');
 
     // Fundamental trajectory — last up-to-3 cache-refresh deltas. Reveals
@@ -118,6 +127,7 @@ function buildPrompt({ tickers, newsByTicker, capexBlock, globals, framework }) 
 分類描述: ${t.description}
 
 最新基本面 (本月剛 refresh): ${fundLine}
+目前 daily digest 使用的報告重估假設: ${assumptionLine}
 近 3 次 cache-refresh 變化:
 ${trajectoryLines}
 
@@ -157,7 +167,7 @@ ${tickerBlocks}
 {
   "NVDA": { "peg": 2.0, "reason": "繁中 1-2 句 ≤80 字", "confidence": 0.85 },
   "AMD": { ... },
-  ...每檔都要有，10 檔不可少
+  ...每檔都要有，總數必須等於本次 ticker 數 (${tickers.length})
 }`;
 }
 
@@ -206,6 +216,10 @@ function applyRecommendations(tickers, recommendations, globals, today) {
     t.pegOverride = newPeg;
     t.pegLastChange = today;
     t.pegRationale = reason;
+    t.analysisAssumptions = t.analysisAssumptions || {};
+    t.analysisAssumptions.pegMultiplier = newPeg;
+    t.analysisAssumptions.asOf = today;
+    t.analysisAssumptions.source = 'monthly PEG review';
     t.pegHistory = Array.isArray(t.pegHistory) ? t.pegHistory : [];
     t.pegHistory.push({ date: today, peg: newPeg, reason });
     // Keep last 24 entries (2 years of monthly history).

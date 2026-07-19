@@ -1,5 +1,5 @@
 {
-  "_doc": "Stock fair-price digest tickers. Cached fundamentals (beta/eps/fcfPerShare/growth5y) act as fallback when Yahoo quoteSummary fails. pegOverride is per-ticker. Monthly auto-review (scripts/peg-review.mjs) updates pegOverride + pegLastChange + pegHistory based on 30d news + AI capex trends; card shows pegRationale for 3 days after change then hides it.",
+  "_doc": "Stock fair-price digest tickers. Daily stock-digest uses analysisAssumptions first for EPS/FCF/growth/beta/PEG when present, then Yahoo live fundamentals, then cache. analysisAssumptions were calibrated from AI supply-chain report v9 (2026-07-19). Monthly cache refresh may still update cache as a raw fundamental reference; monthly PEG review updates pegOverride.",
   "globals": {
     "equityRiskPremium": 0.06,
     "pegMultiplier": 1.25,
@@ -25,7 +25,7 @@
         "erpMult": 1.15
       }
     },
-    "scenarioFootnote": "情境假設：成長 ±30% · P/E 倍數 ±20% · 風險溢酬 ±15%；Beta 保持不變（beta 是系統性風險，非觀點）。",
+    "scenarioFootnote": "情境假設：成長 ±30% · P/E 倍數 ±20% · 風險溢酬 ±15%；Beta 優先採用報告重估後的公司風險假設。",
     "pegReview": {
       "displayDays": 3,
       "maxMonthlyChange": 0.3,
@@ -39,11 +39,11 @@
       "symbol": "NVDA",
       "exchange": "US",
       "zhName": "NVIDIA",
-      "searchKeywords": "NVDA OR NVIDIA OR Blackwell OR Rubin",
-      "description": "GPU + CUDA 平台壟斷者；Agentic AI 訓練與推理算力的事實標準供應者，全棧優勢（GPU + CPU + DPU + 網路 + 軟體）無人能及。",
-      "pegOverride": 2.1,
-      "pegRationale": "新品與生態系統持續擴張，AI PC與Vera Rubin驗證強化龍頭地位，微幅調升。",
-      "pegLastChange": "2026-06-02",
+      "searchKeywords": "NVDA OR NVIDIA OR Blackwell OR Rubin OR CUDA OR NVLink OR Cosmos",
+      "description": "accelerator + network + robotics full stack；CUDA／NVLink／Omniverse／Cosmos 讓它同時吃到資料中心 Wave 1 與 Physical AI 資料工廠，但中國 stack 分裂與 Kimi K3 會壓低「唯一解」敘事。",
+      "pegOverride": 2.05,
+      "pegRationale": "v9：Tier A 全棧控制點仍最高，但中國模型與國產 stack 使壟斷溢價略降。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -54,6 +54,11 @@
           "date": "2026-06-02",
           "peg": 2.1,
           "reason": "新品與生態系統持續擴張，AI PC與Vera Rubin驗證強化龍頭地位，微幅調升。"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 2.05,
+          "reason": "v9：Tier A 全棧控制點仍最高，但中國模型與國產 stack 使壟斷溢價略降。"
         }
       ],
       "cache": {
@@ -62,94 +67,135 @@
         "fcfPerShare": 2.95,
         "growth5y": 0.32,
         "asOf": "2026-Q1"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 4.43,
+        "fcfPerShare": 2.95,
+        "growth5y": 0.34,
+        "beta": 1.9,
+        "pegMultiplier": 2.05
       }
+    },
+    {
+      "symbol": "AAPL",
+      "exchange": "US",
+      "zhName": "Apple",
+      "searchKeywords": "Apple OR AAPL OR \"AI glasses\" OR \"Secure Enclave\" OR Siri",
+      "description": "端側裝置、Secure Enclave 與個人 context 的最大分發入口；AI 眼鏡路線提供 Ambient AI 選擇權，但 v9 指出無顯示眼鏡 2027、顯示型 2029，時程仍會滑動。",
+      "pegOverride": 1.15,
+      "pegRationale": "v9：端側與可信資料入口重要，但 AI 供應鏈純度低且 Wave 2 時程未完全驗證。",
+      "pegHistory": [
+        {
+          "date": "2026-07-19",
+          "peg": 1.15,
+          "reason": "v9：端側與可信資料入口重要，但 AI 供應鏈純度低且 Wave 2 時程未完全驗證。"
+        }
+      ],
+      "cache": {
+        "beta": 1.09,
+        "eps": 8.25,
+        "fcfPerShare": 7.6,
+        "growth5y": 0.09,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 8.25,
+        "fcfPerShare": 7.6,
+        "growth5y": 0.09,
+        "beta": 1.05,
+        "pegMultiplier": 1.15
+      },
+      "pegLastChange": "2026-07-19"
     },
     {
       "symbol": "GOOGL",
       "exchange": "US",
       "zhName": "Alphabet",
-      "searchKeywords": "Alphabet OR GOOGL OR Google OR Gemini OR \"TPU v7\"",
-      "description": "搜尋 + 雲端 + YouTube + Gemini 大模型；自研 TPU v7 Ironwood 是 AI 加速器市場前三大；Cloud 業務直接受惠企業 Agentic AI 部署需求。",
-      "pegOverride": 1.6,
-      "pegRationale": "AI hyperscaler 需求製造者 + 自研 TPU；但搜尋面臨 AI 替代風險折扣",
-      "pegLastChange": "2026-06-02",
+      "searchKeywords": "Alphabet OR GOOGL OR Google OR Gemini OR TPU OR Waymo",
+      "description": "Gemini + Cloud + 自研 TPU，是 AI 需求方與硬體自研方；但搜尋面臨 AI 替代風險，且 hyperscaler capex 消化期會壓 FCF 與估值。",
+      "pegOverride": 1.55,
+      "pegRationale": "v9：Cloud/TPU 受益，但搜尋替代風險與 capex digestion 使 PEG 維持中高段。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-06-02",
           "peg": 1.6,
           "reason": "初始設定：AI hyperscaler / 大型平台類"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.55,
+          "reason": "v9：Cloud/TPU 受益，但搜尋替代風險與 capex digestion 使 PEG 維持中高段。"
         }
       ],
       "cache": {
-        "beta": 1.05,
-        "eps": 8,
-        "fcfPerShare": 5.5,
+        "beta": 1.24,
+        "eps": 13.12,
+        "fcfPerShare": 2.3,
         "growth5y": 0.15,
-        "asOf": "2026-Q1"
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 13.12,
+        "fcfPerShare": 2.3,
+        "growth5y": 0.15,
+        "beta": 1.05,
+        "pegMultiplier": 1.55
       }
     },
     {
       "symbol": "MSFT",
       "exchange": "US",
       "zhName": "Microsoft",
-      "searchKeywords": "Microsoft OR MSFT OR Azure OR Copilot OR \"OpenAI partnership\" OR Maia",
-      "description": "Azure + OpenAI 戰略夥伴 + Copilot；OpenAI 模型在 Azure 獨家託管使其 AI 商業化最領先；自研 Maia 200 ASIC + Cobalt CPU 降低對 NVIDIA 依賴。",
-      "pegOverride": 1.8,
-      "pegRationale": "AI 商業化最領先 hyperscaler；OpenAI 獨家託管 + Azure 高速增長雙引擎",
-      "pegLastChange": "2026-06-02",
+      "searchKeywords": "Microsoft OR MSFT OR Azure OR Copilot OR OpenAI OR Maia",
+      "description": "Azure + OpenAI + Copilot 的 AI 商業化領先者；同時在 device management／OTA／enterprise identity 層具 recurring revenue，但 capex 與 FCF 回收期仍是估值約束。",
+      "pegOverride": 1.75,
+      "pegRationale": "v9：AI 商業化和可信資料/企業管理層優勢明確，扣除 capex 回收期後維持高段。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-06-02",
           "peg": 1.8,
           "reason": "初始設定：AI hyperscaler / 領跑者"
-        }
-      ],
-      "cache": {
-        "beta": 0.92,
-        "eps": 13.5,
-        "fcfPerShare": 8,
-        "growth5y": 0.14,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "AMD",
-      "exchange": "US",
-      "zhName": "Advanced Micro Devices",
-      "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR MI400 OR Instinct)",
-      "description": "GPU/CPU 雙線挑戰者；Q1 26 Data Center $5.8B (+57% YoY)；Helios 機架 H2 26 上市（MI400 432GB HBM4）；長上下文與多 agent 場景 vs NVIDIA 有記憶體優勢。",
-      "pegOverride": 1.7,
-      "pegRationale": "Q1 26 DC $5.8B (+57% YoY)；Helios 機架 H2 26；MI400 在長上下文場景反而受益",
-      "pegLastChange": "2026-06-09",
-      "pegHistory": [
-        {
-          "date": "2026-05-30",
-          "peg": 1.8,
-          "reason": "初始設定：AI 挑戰者分類"
         },
         {
-          "date": "2026-06-09",
-          "peg": 1.7,
-          "reason": "Q1 26 DC $5.8B (+57% YoY)；Helios 機架 H2 26；MI400 在長上下文場景反而受益"
+          "date": "2026-07-19",
+          "peg": 1.75,
+          "reason": "v9：AI 商業化和可信資料/企業管理層優勢明確，扣除 capex 回收期後維持高段。"
         }
       ],
       "cache": {
-        "beta": 1.95,
-        "eps": 2.78,
-        "fcfPerShare": 1.85,
-        "growth5y": 0.28,
-        "asOf": "2026-Q1"
+        "beta": 1.1,
+        "eps": 16.77,
+        "fcfPerShare": 4.98,
+        "growth5y": 0.15,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 16.77,
+        "fcfPerShare": 4.98,
+        "growth5y": 0.15,
+        "beta": 0.95,
+        "pegMultiplier": 1.75
       }
     },
     {
       "symbol": "TSM",
       "exchange": "US",
       "zhName": "Taiwan Semiconductor",
-      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\" OR CoWoS OR N2",
-      "description": "全球最先進製程晶圓代工龍頭；NVIDIA Rubin、AMD MI400、TPU v7、AWS Trainium 等 AI 加速器全部在此生產；CoWoS 先進封裝產能緊俏到 2027，是 AI 鏈最確定的瓶頸。",
-      "pegOverride": 1.7,
-      "pegRationale": "製程獨占護城河 + CoWoS 緊到 2027；Q1 26 HPC 佔 61% 營收、2026 guidance >30%",
-      "pegLastChange": "2026-06-09",
+      "searchKeywords": "TSM OR TSMC OR \"Taiwan Semiconductor\" OR CoWoS OR SoIC OR CoPoS",
+      "description": "Tier A 最高控制點：leading foundry + CoWoS／SoIC／CoPoS；NVIDIA、AMD、Broadcom、TPU 等 AI accelerator 都依賴它，但台海 tail risk 和海外 cluster 複製難度要進折現率。",
+      "pegOverride": 1.75,
+      "pegRationale": "v9：先進製程與封裝瓶頸被再次確認，台海風險限制其不能給 NVIDIA 級 PEG。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -165,6 +211,11 @@
           "date": "2026-06-09",
           "peg": 1.7,
           "reason": "製程獨占護城河 + CoWoS 緊到 2027；Q1 26 HPC 佔 61% 營收、2026 guidance >30%"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.75,
+          "reason": "v9：先進製程與封裝瓶頸被再次確認，台海風險限制其不能給 NVIDIA 級 PEG。"
         }
       ],
       "cache": {
@@ -173,51 +224,125 @@
         "fcfPerShare": 4.2,
         "growth5y": 0.28,
         "asOf": "2026-06-09"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 7.45,
+        "fcfPerShare": 4.2,
+        "growth5y": 0.28,
+        "beta": 1.2,
+        "pegMultiplier": 1.75
       }
     },
     {
-      "symbol": "ARM",
+      "symbol": "AVGO",
       "exchange": "US",
-      "zhName": "Arm Holdings",
-      "searchKeywords": "\"ARM Holdings\" OR \"Arm Ltd\" OR \"AGI CPU\" OR Neoverse",
-      "description": "CPU 指令集授權商；AGI CPU 2026 H2 量產、Meta 為首客戶；2031 營收目標 $25B（vs FY25 ~$4B，6× 成長）；Agentic AI 控制平面需 4× CPU/GW。",
-      "pegOverride": 1.8,
-      "pegRationale": "從 2.2 下修；AGI CPU 2H26 才量產，多數 catalyst 在 2027 後，中段 quality compounder 估值較合理",
-      "pegLastChange": "2026-06-09",
+      "zhName": "Broadcom",
+      "searchKeywords": "Broadcom OR AVGO OR \"custom ASIC\" OR \"switch silicon\" OR SerDes",
+      "description": "Tier A：custom ASIC + switch silicon + SerDes，是 scale-out Ethernet 與 hyperscaler 自研晶片的核心受益者；主要風險是客戶集中、自研第二來源與中國網通替代。",
+      "pegOverride": 1.75,
+      "pegRationale": "v9：custom ASIC 與 switch silicon 已由需求驗證，給高段 PEG，但保留集中度折扣。",
       "pegHistory": [
         {
-          "date": "2026-05-30",
-          "peg": 2,
-          "reason": "初始設定：AI 純成長龍頭分類"
-        },
-        {
-          "date": "2026-06-02",
-          "peg": 2.2,
-          "reason": "AGI CPU生態快速擴張，Oracle加入，上調"
-        },
-        {
-          "date": "2026-06-09",
-          "peg": 1.8,
-          "reason": "從 2.2 下修；AGI CPU 2H26 才量產，多數 catalyst 在 2027 後，中段 quality compounder 估值較合理"
+          "date": "2026-07-19",
+          "peg": 1.75,
+          "reason": "v9：custom ASIC 與 switch silicon 已由需求驗證，給高段 PEG，但保留集中度折扣。"
         }
       ],
       "cache": {
-        "beta": 1.65,
-        "eps": 0.65,
-        "fcfPerShare": 0.55,
+        "beta": 1.43,
+        "eps": 6,
+        "fcfPerShare": 5.72,
         "growth5y": 0.3,
-        "asOf": "2026-06-09"
-      }
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 6,
+        "fcfPerShare": 5.72,
+        "growth5y": 0.3,
+        "beta": 1.35,
+        "pegMultiplier": 1.75
+      },
+      "pegLastChange": "2026-07-19"
+    },
+    {
+      "symbol": "META",
+      "exchange": "US",
+      "zhName": "Meta Platforms",
+      "searchKeywords": "Meta OR META OR \"AI glasses\" OR Llama OR \"Reality Labs\" OR hyperscaler capex",
+      "description": "AI 需求方 + Llama 開放模型 + AI glasses 分發入口；受益於 endpoint 與 personal context，但 Reality Labs、AI capex 與 FCF 回收期使它不是純供應鏈 bottleneck。",
+      "pegOverride": 1.45,
+      "pegRationale": "v9：兼具 hyperscaler demand 與 Ambient AI 入口，但 capex/Reality Labs 稀釋供應鏈純度。",
+      "pegHistory": [
+        {
+          "date": "2026-07-19",
+          "peg": 1.45,
+          "reason": "v9：兼具 hyperscaler demand 與 Ambient AI 入口，但 capex/Reality Labs 稀釋供應鏈純度。"
+        }
+      ],
+      "cache": {
+        "beta": 1.23,
+        "eps": 27.5,
+        "fcfPerShare": 10.06,
+        "growth5y": 0.12,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 27.5,
+        "fcfPerShare": 10.06,
+        "growth5y": 0.12,
+        "beta": 1.15,
+        "pegMultiplier": 1.45
+      },
+      "pegLastChange": "2026-07-19"
+    },
+    {
+      "symbol": "SKHY",
+      "exchange": "US",
+      "zhName": "SK Hynix",
+      "searchKeywords": "SKHY OR \"SK Hynix\" OR HBM OR DRAM OR Solidigm",
+      "description": "Tier A：HBM／server memory 近端控制點，並透過 Solidigm 暴露 enterprise SSD；v9 強調近期 HBM moat 仍在，但 CXMT/YMTC 與記憶體供給過剩是中期風險。",
+      "pegOverride": 1.55,
+      "pegRationale": "v9：HBM 控制點強，但記憶體週期與 ADR 波動使 PEG 維持 1.4-1.6 上緣。",
+      "pegHistory": [
+        {
+          "date": "2026-07-19",
+          "peg": 1.55,
+          "reason": "v9：HBM 控制點強，但記憶體週期與 ADR 波動使 PEG 維持 1.4-1.6 上緣。"
+        }
+      ],
+      "cache": {
+        "beta": 2.03,
+        "eps": 6.95,
+        "fcfPerShare": 3.5,
+        "growth5y": 0.28,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 6.95,
+        "fcfPerShare": 3.5,
+        "growth5y": 0.28,
+        "beta": 2,
+        "pegMultiplier": 1.55
+      },
+      "pegLastChange": "2026-07-19"
     },
     {
       "symbol": "MU",
       "exchange": "US",
       "zhName": "Micron Technology",
-      "searchKeywords": "Micron OR HBM3E OR HBM4 OR \"CHIPS Act\" memory",
-      "description": "美國本土唯一垂直整合 HBM + DRAM + NAND；2026 HBM 已 sold out；Bernstein PT $330；CHIPS Act 戰略保護。",
-      "pegOverride": 1.5,
-      "pegRationale": "2026 HBM sold out + 美國本土唯一 HBM+DRAM+NAND 垂直整合；Bernstein PT $330",
-      "pegLastChange": "2026-06-09",
+      "searchKeywords": "Micron OR MU OR HBM OR DRAM OR NAND OR CXMT",
+      "description": "Tier A：美系 HBM／DRAM／NAND 垂直整合，server memory 與 enterprise SSD 同時受益；但 v9 明確警告記憶體若供給快於 agent/device 部署，股東回報仍會被週期吞掉。",
+      "pegOverride": 1.55,
+      "pegRationale": "v9：HBM/SSD 控制點升級，但 memory cyclicality 與 CXMT 中期風險限制 PEG。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -238,73 +363,206 @@
           "date": "2026-06-09",
           "peg": 1.5,
           "reason": "2026 HBM sold out + 美國本土唯一 HBM+DRAM+NAND 垂直整合；Bernstein PT $330"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.55,
+          "reason": "v9：HBM/SSD 控制點升級，但 memory cyclicality 與 CXMT 中期風險限制 PEG。"
         }
       ],
       "cache": {
-        "beta": 1.38,
-        "eps": 8.2,
-        "fcfPerShare": 3.1,
-        "growth5y": 0.3,
-        "asOf": "2026-Q1"
+        "beta": 2.14,
+        "eps": 44.21,
+        "fcfPerShare": 25,
+        "growth5y": 0.28,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 44.21,
+        "fcfPerShare": 25,
+        "growth5y": 0.28,
+        "beta": 2.05,
+        "pegMultiplier": 1.55
       }
     },
     {
-      "symbol": "ALAB",
+      "symbol": "AMD",
       "exchange": "US",
-      "zhName": "Astera Labs",
-      "searchKeywords": "\"Astera Labs\" OR ALAB OR \"PCIe 6.0\" OR \"Scorpio AI Fabric\"",
-      "description": "PCIe 6.0 Retimer 業界首發 + Scorpio AI Fabric switch；Q1 26 營收 +93% YoY、GM 76.4%、non-GAAP OPM 36.2%；全球約 90% AI 伺服器使用其 HW/SW；但 5 客戶 = 90% 營收，集中度警示。",
-      "pegOverride": 1.9,
-      "pegRationale": "純度滿分（~95% AI 收入集中）+ GM 76% 邊際擴張極強；但 5 客戶集中度給折扣",
-      "pegLastChange": "2026-06-09",
+      "zhName": "Advanced Micro Devices",
+      "searchKeywords": "AMD AND (Lisa Su OR MI300 OR MI350 OR MI400 OR Instinct OR Helios)",
+      "description": "AI GPU/CPU 挑戰者；K3 這類低精度與長 context agent 仍需要 accelerator 與記憶體頻寬，利多 AMD，但 CUDA/NVLink 生態差距和第二名市占限制估值。",
+      "pegOverride": 1.65,
+      "pegRationale": "v9：受益於 accelerator 多元化，但 share 第二與生態差距使 PEG 低於 TSM/AVGO。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
+          "date": "2026-05-30",
+          "peg": 1.8,
+          "reason": "初始設定：AI 挑戰者分類"
+        },
+        {
           "date": "2026-06-09",
-          "peg": 1.9,
-          "reason": "初始設定：AI 機架內互聯純玩家"
+          "peg": 1.7,
+          "reason": "Q1 26 DC $5.8B (+57% YoY)；Helios 機架 H2 26；MI400 在長上下文場景反而受益"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.65,
+          "reason": "v9：受益於 accelerator 多元化，但 share 第二與生態差距使 PEG 低於 TSM/AVGO。"
         }
       ],
       "cache": {
-        "beta": 2.2,
-        "eps": 1.5,
-        "fcfPerShare": 1.2,
-        "growth5y": 0.5,
-        "asOf": "2026-06-09"
+        "beta": 1.95,
+        "eps": 3.02,
+        "fcfPerShare": 4.4,
+        "growth5y": 0.24,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 3.02,
+        "fcfPerShare": 4.4,
+        "growth5y": 0.24,
+        "beta": 1.85,
+        "pegMultiplier": 1.65
+      }
+    },
+    {
+      "symbol": "BHP.AX",
+      "exchange": "AU",
+      "zhName": "BHP Group",
+      "searchKeywords": "\"BHP Group\" OR \"BHP Billiton\" OR Escondida OR \"OZ Minerals\"",
+      "description": "多元化礦業；銅、鎳、鐵受益 AI 電力與資料中心建設，但 v9 把 commodity/miner 明確放在 diversified discount，而非純 AI bottleneck。",
+      "pegOverride": 1.25,
+      "pegRationale": "v9：材料需求正確，但多元化與 commodity cyclicality 使 PEG 降到 1.2-1.4 區間。",
+      "pegLastChange": "2026-07-19",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.3,
+          "reason": "初始設定：AI 上游礦產 — 多元化礦業"
+        },
+        {
+          "date": "2026-06-02",
+          "peg": 1.3,
+          "reason": "改抓 ASX 主要上市 (BHP.AX, AUD)；PEG 不變"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.25,
+          "reason": "v9：材料需求正確，但多元化與 commodity cyclicality 使 PEG 降到 1.2-1.4 區間。"
+        }
+      ],
+      "cache": {
+        "beta": 0.95,
+        "eps": 4.5,
+        "fcfPerShare": 3.2,
+        "growth5y": 0.08,
+        "asOf": "2026-Q1"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 4.5,
+        "fcfPerShare": 3.2,
+        "growth5y": 0.08,
+        "beta": 0.9,
+        "pegMultiplier": 1.25
       }
     },
     {
       "symbol": "MRVL",
       "exchange": "US",
       "zhName": "Marvell Technology",
-      "searchKeywords": "Marvell OR MRVL OR \"custom ASIC\" OR \"silicon photonics\"",
-      "description": "客製 ASIC（年化 ~$50B）+ CPO 光通訊雙引擎；NVIDIA 2026 投資 $2B 強化美國光源產業；但車用 Ethernet 業務 2025 已賣給 Infineon，AI 集中度提升但業務範圍收斂。",
-      "pegOverride": 1.5,
-      "pegRationale": "客製 ASIC + CPO 結構性受益；車用 Ethernet 出售後集中度提升但失去多元化緩衝",
-      "pegLastChange": "2026-06-09",
+      "searchKeywords": "Marvell OR MRVL OR \"custom ASIC\" OR \"silicon photonics\" OR DSP",
+      "description": "AI 網路與客製矽二線贏家；CPO、DSP、interconnect 受益，但 v9 將其定位為與 Broadcom 競爭、AI 集中度中等且中國客戶/管制雙向暴露。",
+      "pegOverride": 1.45,
+      "pegRationale": "v9：AI data path 重要但低於 Broadcom；競爭、集中度與管制風險壓低 PEG。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-06-09",
           "peg": 1.5,
           "reason": "初始設定：AI 網路 / 客製矽"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.45,
+          "reason": "v9：AI data path 重要但低於 Broadcom；競爭、集中度與管制風險壓低 PEG。"
         }
       ],
       "cache": {
         "beta": 1.7,
         "eps": 2,
         "fcfPerShare": 1.8,
-        "growth5y": 0.3,
+        "growth5y": 0.26,
         "asOf": "2026-06-09"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 2,
+        "fcfPerShare": 1.8,
+        "growth5y": 0.26,
+        "beta": 1.65,
+        "pegMultiplier": 1.45
+      }
+    },
+    {
+      "symbol": "RIO.AX",
+      "exchange": "AU",
+      "zhName": "Rio Tinto",
+      "searchKeywords": "\"Rio Tinto\" OR Kennecott OR \"Oyu Tolgoi\" OR copper OR aluminium",
+      "description": "多元化礦業；銅、鐵、鋁三軸連到資料中心電力與建材，但 v9 強調 commodity bet 必須另看 ROIC、ASP 與週期。",
+      "pegOverride": 1.25,
+      "pegRationale": "v9：AI 材料需求是長期支撐，但多元化礦業不應給純瓶頸溢價。",
+      "pegLastChange": "2026-07-19",
+      "pegHistory": [
+        {
+          "date": "2026-05-31",
+          "peg": 1.3,
+          "reason": "初始設定：AI 上游礦產 — 多元化礦業"
+        },
+        {
+          "date": "2026-06-02",
+          "peg": 1.3,
+          "reason": "改抓 ASX 上市 (RIO.AX, AUD)；PEG 不變"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.25,
+          "reason": "v9：AI 材料需求是長期支撐，但多元化礦業不應給純瓶頸溢價。"
+        }
+      ],
+      "cache": {
+        "beta": 0.85,
+        "eps": 11.2,
+        "fcfPerShare": 9,
+        "growth5y": 0.07,
+        "asOf": "2026-Q1"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 11.2,
+        "fcfPerShare": 9,
+        "growth5y": 0.07,
+        "beta": 0.85,
+        "pegMultiplier": 1.25
       }
     },
     {
       "symbol": "VRT",
       "exchange": "US",
       "zhName": "Vertiv Holdings",
-      "searchKeywords": "Vertiv OR \"liquid cooling\" OR \"data center cooling\" OR Liebert",
-      "description": "資料中心電源 + 液冷基建龍頭；backlog $12.45B (+80.8% YoY)、Q1 26 EPS +83%；600kW 機櫃時代直接最大受益方；與 NVIDIA 共同開發 AI Factory 參考設計。",
-      "pegOverride": 1.9,
-      "pegRationale": "backlog 校正至 $12.45B (+80.8% YoY)；Q1 EPS +83%；2026 guidance 上修到 $13.5-14B",
-      "pegLastChange": "2026-06-09",
+      "searchKeywords": "Vertiv OR VRT OR \"liquid cooling\" OR \"data center cooling\" OR UPS OR Liebert",
+      "description": "Tier A：資料中心配電、UPS、rack power 與液冷；v9 稱其為 Wave 1 最長能見度之一，但銅、磁材、site 延期與價格成本倒掛仍是主要否證訊號。",
+      "pegOverride": 1.85,
+      "pegRationale": "v9：配電/冷卻是最可驗證瓶頸之一，但非完全免疫中國材料與 site 延期。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-05-30",
@@ -325,6 +583,11 @@
           "date": "2026-06-09",
           "peg": 1.9,
           "reason": "backlog 校正至 $12.45B (+80.8% YoY)；Q1 EPS +83%；2026 guidance 上修到 $13.5-14B"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.85,
+          "reason": "v9：配電/冷卻是最可驗證瓶頸之一，但非完全免疫中國材料與 site 延期。"
         }
       ],
       "cache": {
@@ -333,56 +596,26 @@
         "fcfPerShare": 2.4,
         "growth5y": 0.25,
         "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "CEG",
-      "exchange": "US",
-      "zhName": "Constellation Energy",
-      "searchKeywords": "\"Constellation Energy\" OR \"Three Mile Island\" OR \"nuclear PPA\"",
-      "description": "美國最大核電廠運營商（22 座反應堆 ~33GW）；CEO 公開承諾 base earnings growth 20%+ 至 2029；TMI 給 Microsoft 20 年 PPA；24/7 firm power 是 hyperscaler AI 工作負載唯一可靠來源。",
-      "pegOverride": 1.8,
-      "pegRationale": "CEO 公開承諾 base earnings growth 20%+ 至 2029；FY26 EPS guidance $11-12；TMI 給 Microsoft 20 年 PPA",
-      "pegLastChange": "2026-06-09",
-      "pegHistory": [
-        {
-          "date": "2026-05-30",
-          "peg": 1.5,
-          "reason": "初始設定：AI 基建/電力分類"
-        },
-        {
-          "date": "2026-05-31",
-          "peg": 1.6,
-          "reason": "從 1.5 上修；24×7 firm power 唯一解的稀缺溢價"
-        },
-        {
-          "date": "2026-06-02",
-          "peg": 1.5,
-          "reason": "二次發行短期壓力，核電長期價值不變，微幅下調"
-        },
-        {
-          "date": "2026-06-09",
-          "peg": 1.8,
-          "reason": "CEO 公開承諾 base earnings growth 20%+ 至 2029；FY26 EPS guidance $11-12；TMI 給 Microsoft 20 年 PPA"
-        }
-      ],
-      "cache": {
-        "beta": 1.25,
-        "eps": 9.2,
-        "fcfPerShare": 6.5,
-        "growth5y": 0.2,
-        "asOf": "2026-06-09"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 3.1,
+        "fcfPerShare": 2.4,
+        "growth5y": 0.25,
+        "beta": 1.45,
+        "pegMultiplier": 1.85
       }
     },
     {
       "symbol": "FCX",
       "exchange": "US",
       "zhName": "Freeport-McMoRan",
-      "searchKeywords": "\"Freeport-McMoRan\" OR FCX OR Grasberg",
-      "description": "全球最大非中國銅生產商；每 100MW AI campus 用銅 500-2000 噸（高壓饋線 + 機房 busbar），銅是 AI 資料中心金額最大宗的金屬。",
-      "pegOverride": 1.6,
-      "pegRationale": "銅赤字擴大+AI數據中心用銅，上調",
-      "pegLastChange": "2026-06-02",
+      "searchKeywords": "\"Freeport-McMoRan\" OR FCX OR Grasberg OR copper",
+      "description": "銅供應龍頭；v9 強調 AI campus、配電與機房 busbar 會推升銅需求，但上游 commodity 的股東回報仍受價格、capex 與週期支配。",
+      "pegOverride": 1.5,
+      "pegRationale": "v9：銅是 AI 電力最大宗金屬之一，但 commodity cyclicality 使 PEG cap 留在 1.5 附近。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-05-31",
@@ -393,197 +626,180 @@
           "date": "2026-06-02",
           "peg": 1.6,
           "reason": "銅赤字擴大+AI數據中心用銅，上調"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.5,
+          "reason": "v9：銅是 AI 電力最大宗金屬之一，但 commodity cyclicality 使 PEG cap 留在 1.5 附近。"
         }
       ],
       "cache": {
         "beta": 2.1,
         "eps": 2.5,
         "fcfPerShare": 1.8,
-        "growth5y": 0.2,
+        "growth5y": 0.18,
         "asOf": "2026-Q1"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 2.5,
+        "fcfPerShare": 1.8,
+        "growth5y": 0.18,
+        "beta": 1.9,
+        "pegMultiplier": 1.5
       }
     },
     {
-      "symbol": "HSAI",
+      "symbol": "ALAB",
       "exchange": "US",
-      "zhName": "Hesai Group",
-      "searchKeywords": "Hesai OR HSAI OR \"禾賽\" OR \"Hesai Technology\"",
-      "description": "中國 LiDAR 全球龍頭（車載 37-39% 市占、robotaxi 60-70%）；Morgan Stanley Humanoid Tech 25 唯一 LiDAR 公司；Mercedes L3 戰略 supplier；Q1 26 出貨 +141% YoY 並轉盈利；2026 全年指引 3-3.5M 台。",
-      "pegOverride": 1.7,
-      "pegRationale": "Physical AI 純度最高的 LiDAR；機器人 + 自駕雙曝光；China ADR 折扣稍打低於同分純玩家",
-      "pegLastChange": "2026-06-09",
+      "zhName": "Astera Labs",
+      "searchKeywords": "\"Astera Labs\" OR ALAB OR \"PCIe 6.0\" OR \"Scorpio AI Fabric\" OR CXL",
+      "description": "PCIe/CXL retimer 與 fabric switch 高純度 AI connectivity；v9 把它列為相對受益，但客戶集中、估值與 AI cluster 延期是最重要風險。",
+      "pegOverride": 1.85,
+      "pegRationale": "v9：高純度 AI data path，維持高 PEG；客戶集中與近期估值波動扣一檔。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-06-09",
-          "peg": 1.7,
-          "reason": "初始設定：Physical AI 感測器純玩家"
+          "peg": 1.9,
+          "reason": "初始設定：AI 機架內互聯純玩家"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.85,
+          "reason": "v9：高純度 AI data path，維持高 PEG；客戶集中與近期估值波動扣一檔。"
         }
       ],
       "cache": {
-        "beta": 1.8,
-        "eps": 0.1,
-        "fcfPerShare": -0.2,
+        "beta": 2.2,
+        "eps": 1.5,
+        "fcfPerShare": 1.2,
         "growth5y": 0.45,
         "asOf": "2026-06-09"
-      }
-    },
-    {
-      "symbol": "LYC.AX",
-      "exchange": "AU",
-      "zhName": "Lynas Rare Earths",
-      "searchKeywords": "Lynas OR \"rare earth\" OR Nd-Fe-B OR Mt Weld",
-      "description": "中國以外最大稀土生產商（澳洲 Mt Weld 礦 + 馬來西亞冶煉）；稀土磁鐵用於風力發電、馬達、硬碟，中國掌握全球冶煉 90%+，2025 重稀土管制利多供應替代方。",
-      "pegOverride": 1.8,
-      "pegRationale": "稀土供應鏈重組利多，上調",
-      "pegLastChange": "2026-06-02",
-      "pegHistory": [
-        {
-          "date": "2026-05-31",
-          "peg": 1.7,
-          "reason": "初始設定：AI 上游礦產 — 非中國稀土戰略受益"
-        },
-        {
-          "date": "2026-06-02",
-          "peg": 1.8,
-          "reason": "稀土供應鏈重組利多，上調"
-        }
-      ],
-      "cache": {
-        "beta": 1.8,
-        "eps": 0.15,
-        "fcfPerShare": 0.1,
-        "growth5y": 0.3,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "BHP.AX",
-      "exchange": "AU",
-      "zhName": "BHP Group",
-      "searchKeywords": "\"BHP Group\" OR \"BHP Billiton\" OR Escondida OR \"OZ Minerals\"",
-      "description": "全球最大多元化礦業集團（ASX 主要上市）；智利 Escondida 銅礦 + 鎳 + 鐵礦；AI 算力推升銅與儲能用鎳需求，跨週期受益。",
-      "pegOverride": 1.3,
-      "pegRationale": "多元化礦業 diversified discount；銅 + 鎳 + 鐵多軸受益",
-      "pegLastChange": "2026-06-02",
-      "pegHistory": [
-        {
-          "date": "2026-05-31",
-          "peg": 1.3,
-          "reason": "初始設定：AI 上游礦產 — 多元化礦業"
-        },
-        {
-          "date": "2026-06-02",
-          "peg": 1.3,
-          "reason": "改抓 ASX 主要上市 (BHP.AX, AUD)；PEG 不變"
-        }
-      ],
-      "cache": {
-        "beta": 0.95,
-        "eps": 4.5,
-        "fcfPerShare": 3.2,
-        "growth5y": 0.08,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "RIO.AX",
-      "exchange": "AU",
-      "zhName": "Rio Tinto",
-      "searchKeywords": "\"Rio Tinto\" OR Kennecott OR \"Oyu Tolgoi\"",
-      "description": "全球第二大多元化礦業集團（ASX 上市）；Kennecott (美) + Oyu Tolgoi (蒙古) 銅礦；同時受惠 AI 電力與資料中心建材（鋁、鐵）需求。",
-      "pegOverride": 1.3,
-      "pegRationale": "類 BHP 多元化礦業；銅 + 鐵 + 鋁三引擎",
-      "pegLastChange": "2026-06-02",
-      "pegHistory": [
-        {
-          "date": "2026-05-31",
-          "peg": 1.3,
-          "reason": "初始設定：AI 上游礦產 — 多元化礦業"
-        },
-        {
-          "date": "2026-06-02",
-          "peg": 1.3,
-          "reason": "改抓 ASX 上市 (RIO.AX, AUD)；PEG 不變"
-        }
-      ],
-      "cache": {
-        "beta": 0.85,
-        "eps": 11.2,
-        "fcfPerShare": 9,
-        "growth5y": 0.07,
-        "asOf": "2026-Q1"
-      }
-    },
-    {
-      "symbol": "PLS.AX",
-      "exchange": "AU",
-      "zhName": "Pilbara Minerals",
-      "searchKeywords": "\"Pilbara Minerals\" OR Pilgangoora OR lithium",
-      "description": "澳洲純鋰礦商（Pilgangoora 礦山）；資料中心 BBU、Tesla Megapack 儲能、微電網都靠鋰電池，是非中國鋰供應鏈核心。",
-      "pegOverride": 1.4,
-      "pegRationale": "純鋰礦戰略受益但鋰價 cyclical 限制溢價",
-      "pegLastChange": "2026-05-31",
-      "pegHistory": [
-        {
-          "date": "2026-05-31",
-          "peg": 1.4,
-          "reason": "初始設定：AI 上游礦產 — 鋰戰略受益"
-        }
-      ],
-      "cache": {
-        "beta": 2.4,
-        "eps": 0.05,
-        "fcfPerShare": 0.1,
-        "growth5y": 0.35,
-        "asOf": "2026-Q1"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 1.5,
+        "fcfPerShare": 1.2,
+        "growth5y": 0.45,
+        "beta": 2.1,
+        "pegMultiplier": 1.85
       }
     },
     {
       "symbol": "NXT.AX",
       "exchange": "AU",
       "zhName": "NEXTDC",
-      "searchKeywords": "NEXTDC OR \"NXT.AX\" OR \"NEXT DC\"",
-      "description": "澳洲最大專業資料中心業者；hyperscaler 主要供應方；AI 算力需求推動 S5 / S6 hyperscale 機房擴建，但仍處高 capex 階段、EPS 即將轉正。",
-      "pegOverride": 1.6,
-      "pegRationale": "澳洲 AI 基建純玩家；hyperscaler 客戶集中度高 + REIT-like 利率敏感",
-      "pegLastChange": "2026-06-02",
+      "searchKeywords": "NEXTDC OR \"NXT.AX\" OR \"NEXT DC\" OR \"S5\" OR \"S6\"",
+      "description": "澳洲資料中心純玩家；v9 強調澳洲的 grid-ready MW、資料主權與可供電土地，NEXTDC 是最直接標的，但 pre-profit、capex-heavy 與利率敏感要反映。",
+      "pegOverride": 1.5,
+      "pegRationale": "v9：澳洲 data center 純度高，但通電 MW/融資成本比 announced MW 更關鍵。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-06-02",
           "peg": 1.6,
           "reason": "初始設定：AI 基建/電力分類（澳股）"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.5,
+          "reason": "v9：澳洲 data center 純度高，但通電 MW/融資成本比 announced MW 更關鍵。"
         }
       ],
       "cache": {
-        "beta": 1.3,
+        "beta": 1.22,
+        "eps": -0.09,
+        "fcfPerShare": -1.55,
+        "growth5y": 0.24,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
         "eps": 0.08,
-        "fcfPerShare": -0.3,
-        "growth5y": 0.28,
-        "asOf": "2026-Q1"
+        "fcfPerShare": 0.1,
+        "growth5y": 0.24,
+        "beta": 1.25,
+        "pegMultiplier": 1.5
+      }
+    },
+    {
+      "symbol": "HSAI",
+      "exchange": "US",
+      "zhName": "Hesai Group",
+      "searchKeywords": "Hesai OR HSAI OR \"禾賽\" OR \"Hesai Technology\" OR LiDAR",
+      "description": "中國 LiDAR 量產龍頭，是中國 Physical AI/ADAS 供應鏈衝擊的本體；v9 將其列 Tier B，邏輯是 endpoint attach rate，但 China ADR 與價格競爭必須折扣。",
+      "pegOverride": 1.6,
+      "pegRationale": "v9：Physical AI 純度高但屬中國鏈，保留 China ADR 與價格戰折扣。",
+      "pegLastChange": "2026-07-19",
+      "pegHistory": [
+        {
+          "date": "2026-06-09",
+          "peg": 1.7,
+          "reason": "初始設定：Physical AI 感測器純玩家"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.6,
+          "reason": "v9：Physical AI 純度高但屬中國鏈，保留 China ADR 與價格戰折扣。"
+        }
+      ],
+      "cache": {
+        "beta": 1.36,
+        "eps": 0.44,
+        "fcfPerShare": 0.15,
+        "growth5y": 0.35,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 0.44,
+        "fcfPerShare": 0.15,
+        "growth5y": 0.35,
+        "beta": 1.8,
+        "pegMultiplier": 1.6
       }
     },
     {
       "symbol": "MAQ.AX",
       "exchange": "AU",
       "zhName": "Macquarie Technology",
-      "searchKeywords": "\"Macquarie Technology\" OR MAQ.AX OR \"Macquarie Telecom\"",
-      "description": "澳洲資料中心 + 電信 + 資安綜合科技集團；IC2 Sydney 機房擴建中；規模較 NXT 小、業務多元化但 AI 基建曝險明確。",
-      "pegOverride": 1.5,
-      "pegRationale": "澳洲 AI 基建 diversified；規模較 NXT 小但獲利穩定，多元業務折扣",
-      "pegLastChange": "2026-06-02",
+      "searchKeywords": "\"Macquarie Technology\" OR MAQ.AX OR \"Macquarie Telecom\" OR IC2",
+      "description": "澳洲資料中心 + 電信 + 資安綜合科技集團；v9 的澳洲 thesis 支持資料主權與可供電土地，但 MAQ 規模小、AI 純度低於 NEXTDC。",
+      "pegOverride": 1.35,
+      "pegRationale": "v9：澳洲 AI infra exposure 明確但公司規模小且 diversified，PEG 低於 NEXTDC。",
+      "pegLastChange": "2026-07-19",
       "pegHistory": [
         {
           "date": "2026-06-02",
           "peg": 1.5,
           "reason": "初始設定：AI 基建/電力分類（澳股，diversified）"
+        },
+        {
+          "date": "2026-07-19",
+          "peg": 1.35,
+          "reason": "v9：澳洲 AI infra exposure 明確但公司規模小且 diversified，PEG 低於 NEXTDC。"
         }
       ],
       "cache": {
         "beta": 0.95,
-        "eps": 1.5,
+        "eps": 0.96,
         "fcfPerShare": 0.4,
-        "growth5y": 0.18,
-        "asOf": "2026-Q1"
+        "growth5y": 0.15,
+        "asOf": "2026-07-19"
+      },
+      "analysisAssumptions": {
+        "asOf": "2026-07-19",
+        "source": "AI supply-chain report v9",
+        "eps": 0.96,
+        "fcfPerShare": 0.4,
+        "growth5y": 0.15,
+        "beta": 0.95,
+        "pegMultiplier": 1.35
       }
     }
   ]
