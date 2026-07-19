@@ -53,21 +53,24 @@ function fcfPerShareFromYahoo(fund) {
 
 function mergeParams(ticker, quote, fund, treasury10y, globals) {
   const cache = ticker.cache || {};
-  // pegOverride per ticker > global default. Per-ticker values come from the
-  // sell-side framework (AI hyper-growth ≈ 2.0, cyclical memory ≈ 1.1, etc.)
-  // and are refreshed monthly by scripts/peg-review.mjs based on news + capex.
-  const pegMult = Number.isFinite(ticker.pegOverride) ? ticker.pegOverride : globals.pegMultiplier;
+  const assumptions = ticker.analysisAssumptions || {};
+  // analysisAssumptions are the manually reviewed investment-model inputs.
+  // They intentionally take precedence over Yahoo's analyst fields so the
+  // daily digest reflects the current supply-chain thesis, not only generic
+  // consensus-growth data. Missing assumption fields still fall through to
+  // live Yahoo fundamentals, then config cache.
+  const pegMult = pickNumber(assumptions.pegMultiplier, ticker.pegOverride, globals.pegMultiplier);
   return {
     price:        pickNumber(quote?.regularMarketPrice, quote?.postMarketPrice),
     prevClose:    pickNumber(quote?.regularMarketPreviousClose),
-    eps:          pickNumber(fund?.eps, cache.eps),
-    fcfPerShare:  pickNumber(fcfPerShareFromYahoo(fund), cache.fcfPerShare),
-    beta:         pickNumber(fund?.beta, cache.beta),
-    growth:       pickNumber(fund?.growth5y, cache.growth5y),
-    riskFree:     pickNumber(treasury10y, globals.fallbackRiskFree),
-    erp:          globals.equityRiskPremium,
+    eps:          pickNumber(assumptions.eps, fund?.eps, cache.eps),
+    fcfPerShare:  pickNumber(assumptions.fcfPerShare, fcfPerShareFromYahoo(fund), cache.fcfPerShare),
+    beta:         pickNumber(assumptions.beta, fund?.beta, cache.beta),
+    growth:       pickNumber(assumptions.growth5y, fund?.growth5y, cache.growth5y),
+    riskFree:     pickNumber(assumptions.riskFree, treasury10y, globals.fallbackRiskFree),
+    erp:          pickNumber(assumptions.equityRiskPremium, globals.equityRiskPremium),
     pegMult,
-    horizon:      globals.horizonYears,
+    horizon:      pickNumber(assumptions.horizonYears, globals.horizonYears),
   };
 }
 
