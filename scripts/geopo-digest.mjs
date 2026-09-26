@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { writeFile } from 'fs/promises';
+import { isCapableModel } from './lib/model-filter.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -24,7 +25,11 @@ if (!CHAT_ID && !CHANNEL_CHAT_ID) {
   process.exit(1);
 }
 
-const MAX_TOKENS  = 5500;
+// Output budget. Generous on purpose: the 8-card briefing runs ~3,000 Chinese
+// characters, and reasoning models (DeepSeek v4-pro) spend part of this budget
+// thinking before they emit a single visible character. Too tight a cap shows
+// up as an empty or truncated response, not as an error.
+const MAX_TOKENS  = 8500;
 const OUTPUT_FILE = '/tmp/geopo-briefing.md';
 
 // Minimum acceptable response length. A full briefing (8 cards: 5 China-adjacent
@@ -251,20 +256,6 @@ const PREFERRED_MODELS = [
   'minimax/minimax-m2.5:free',
 ];
 
-// Filter out models too small to follow a structured multi-card prompt.
-// ≤4B params tend to produce truncated or off-format output.
-// Catches both conventional naming (-2b-, _4b:) and "effective params" naming (e2b, e4b)
-// used by models like gemma-3n-e2b-it and gemma-3n-e4b-it.
-const TINY_MODEL_RE = /[-_e](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
-
-// Only block models known to return empty/broken responses.
-// Do NOT block slow models here — a 60s timeout handles those.
-const BLOCKED_MODEL_RE = /^nvidia\/nemotron/;
-
-function isCapableModel(id) {
-  return !TINY_MODEL_RE.test(id) && !BLOCKED_MODEL_RE.test(id);
-}
-
 async function fetchFreeModels() {
   try {
     const res = await fetch('https://openrouter.ai/api/v1/models', {
@@ -415,9 +406,13 @@ async function tryModelsSequentially(models, prompt) {
 // dc/geopo/stock runs in the same minute). Treat that error — plus 429/5xx —
 // as transient and retry once before falling through.
 
-const AGNES_MAX_ATTEMPTS = 2;
+// An empty or truncated 200 is transient too: Agnes returns one every so often
+// for a prompt it answers fine on the next call (2026-09-26 run 193 died this
+// way while the data-center digest got a full answer 25 minutes earlier), so a
+// retry is far cheaper than falling through to the free-model gauntlet.
+const AGNES_MAX_ATTEMPTS = 3;
 const AGNES_RETRY_DELAY  = 2_000;
-const AGNES_TRANSIENT_RE = /^Agnes (?:400|408|409|425|429|5\d\d)|Invalid model name|fetch failed|network|ECONN/i;
+const AGNES_TRANSIENT_RE = /^Agnes (?:400|408|409|425|429|5\d\d)|Invalid model name|fetch failed|network|ECONN|empty response|response too short/i;
 
 async function callAgnes(prompt) {
   let lastErr;
@@ -458,11 +453,26 @@ async function callAgnesOnce(prompt) {
 
   const result = await response.json();
   const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error('Agnes returned empty response');
+  if (!content) throw new Error(`Agnes returned empty response (${describeCompletion(result)})`);
   if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`Agnes response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+    throw new Error(`Agnes response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH}; ${describeCompletion(result)})`);
   }
   return content;
+}
+
+// An empty or stunted completion tells us nothing on its own. finish_reason and
+// the token counts say whether the model hit the output cap, spent the whole
+// budget on hidden reasoning, or simply returned nothing — three very different
+// bugs that otherwise all read as "empty response" in the logs.
+function describeCompletion(result) {
+  const choice    = result.choices?.[0] || {};
+  const usage     = result.usage || {};
+  const reasoning = choice.message?.reasoning_content || choice.message?.reasoning || '';
+  const parts = [`finish_reason=${choice.finish_reason ?? 'n/a'}`];
+  if (usage.completion_tokens != null) parts.push(`completion_tokens=${usage.completion_tokens}`);
+  if (usage.reasoning_tokens  != null) parts.push(`reasoning_tokens=${usage.reasoning_tokens}`);
+  if (reasoning) parts.push(`reasoning_chars=${reasoning.length}`);
+  return parts.join(', ');
 }
 
 // -- DeepSeek paid fallback ---------------------------------------------------
@@ -474,9 +484,16 @@ async function callAgnesOnce(prompt) {
 // structured briefing is too complex for Flash — it consistently truncates under
 // the 2000-char threshold, even on retries. Pro reliably produces the full
 // output. Cost is a few cents per run; reliability is worth it.
-const DEEPSEEK_MAX_ATTEMPTS = 3;
+// Retrying v4-pro three times is not a fallback — on 2026-09-26 it returned
+// empty, 189 chars, empty, and the briefing was lost. So the last attempt
+// switches to v4-flash, the model every other digest in this repo runs on
+// successfully. Flash used to truncate here, which is exactly what the larger
+// MAX_TOKENS above addresses; a short answer is rejected either way, so the
+// swap can only add a chance of getting the briefing out.
+const DEEPSEEK_MODELS = ['deepseek-v4-pro', 'deepseek-v4-pro', 'deepseek-v4-flash'];
+const DEEPSEEK_MAX_ATTEMPTS = DEEPSEEK_MODELS.length;
 
-async function callDeepSeekOnce(prompt) {
+async function callDeepSeekOnce(prompt, model) {
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     signal: AbortSignal.timeout(120_000),
     method: 'POST',
@@ -485,7 +502,7 @@ async function callDeepSeekOnce(prompt) {
       'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'deepseek-v4-pro',
+      model,
       max_tokens: MAX_TOKENS,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -498,9 +515,9 @@ async function callDeepSeekOnce(prompt) {
 
   const result = await response.json();
   const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error('DeepSeek returned empty response');
+  if (!content) throw new Error(`DeepSeek returned empty response (${describeCompletion(result)})`);
   if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH}; ${describeCompletion(result)})`);
   }
   return content;
 }
@@ -509,13 +526,14 @@ async function callDeepSeek(prompt) {
   console.log('Falling back to DeepSeek (paid)...');
   let lastErr;
   for (let attempt = 1; attempt <= DEEPSEEK_MAX_ATTEMPTS; attempt++) {
+    const model = DEEPSEEK_MODELS[attempt - 1];
     try {
-      const content = await callDeepSeekOnce(prompt);
-      console.log(`✓ Success: DeepSeek (paid fallback, attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS})`);
+      const content = await callDeepSeekOnce(prompt, model);
+      console.log(`✓ Success: DeepSeek ${model} (paid fallback, attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS})`);
       return content;
     } catch (err) {
       lastErr = err;
-      console.warn(`✗ DeepSeek attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS}: ${err.message.slice(0, 120)}`);
+      console.warn(`✗ DeepSeek ${model} attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS}: ${err.message.slice(0, 200)}`);
       // Brief backoff between attempts (skip after the final one).
       if (attempt < DEEPSEEK_MAX_ATTEMPTS) {
         await new Promise(r => setTimeout(r, attempt * 2000));

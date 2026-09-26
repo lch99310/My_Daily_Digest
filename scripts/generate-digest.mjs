@@ -7,6 +7,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { isCapableModel } from './lib/model-filter.mjs';
 
 // -- Config -------------------------------------------------------------------
 
@@ -40,19 +41,6 @@ const MAX_TOKENS = 4096;
 // Minimum response length — a valid digest (3–5 cards) must be at least ~600 chars.
 // Models smaller than ~7B often produce truncated or off-format output; reject them.
 const MIN_CONTENT_LENGTH = 600;
-
-// Filter out models too small to follow structured prompts (≤4B params).
-// Catches both conventional naming (-2b-, _4b:) and "effective params" naming (e2b, e4b)
-// used by models like gemma-3n-e2b-it and gemma-3n-e4b-it.
-const TINY_MODEL_RE = /[-_e](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
-
-// Only block models known to return empty/broken responses.
-// Do NOT block slow models here — a 60s timeout handles those.
-const BLOCKED_MODEL_RE = /^nvidia\/nemotron/;
-
-function isCapableModel(id) {
-  return !TINY_MODEL_RE.test(id) && !BLOCKED_MODEL_RE.test(id);
-}
 
 // -- URL helpers -------------------------------------------------------------
 
