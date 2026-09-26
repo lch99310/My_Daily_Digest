@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { writeFile } from 'fs/promises';
+import { isCapableModel } from './lib/model-filter.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -338,16 +339,6 @@ const FALLBACK_MODELS = [
 const PREFERRED_MODELS = [
   'minimax/minimax-m2.5:free',
 ];
-
-// Filter out models too small to follow a structured multi-card prompt.
-const TINY_MODEL_RE = /[-_e](0\.\d+|1\.?\d*|2\.?\d*|3\.?\d*|4\.?\d*)b[-_:]/i;
-
-// Only block models known to return empty/broken responses.
-const BLOCKED_MODEL_RE = /^nvidia\/nemotron/;
-
-function isCapableModel(id) {
-  return !TINY_MODEL_RE.test(id) && !BLOCKED_MODEL_RE.test(id);
-}
 
 async function fetchFreeModels() {
   try {
