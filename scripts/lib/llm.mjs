@@ -1,9 +1,11 @@
 // LLM call helper for new digests (stock, macro).
 // Order: Agnes AI → DeepSeek (paid, reliable) → OpenRouter free models fallback.
-// Existing inline digests (dc, geopo, generate-digest) follow the same Agnes-
-// first priority but use their own implementations.
+// The Agnes call itself (retries, rate limits, budget escalation) is shared
+// with the inline digests via lib/agnes.mjs.
 //
 // Rationale: finance digests carry money-decision info; reliability beats cost.
+
+import { callAgnes } from './agnes.mjs';
 
 const IDLE_TIMEOUT     = 30_000;
 const ABSOLUTE_TIMEOUT = 180_000;
@@ -27,7 +29,11 @@ export async function callLLMReliable(prompt, {
 } = {}) {
   if (agnesKey) {
     try {
-      return await _callAgnes(prompt, { maxTokens, minContentLength, apiKey: agnesKey, responseFormat });
+      const content = await callAgnes(prompt, {
+        apiKey: agnesKey, maxTokens, minContentLength, responseFormat, timeoutMs: ABSOLUTE_TIMEOUT,
+      });
+      console.log('✓ Success: Agnes');
+      return content;
     } catch (err) {
       // Print full Agnes error — server includes the list of available models
       // when it rejects a model name, and we want that visible in logs.
@@ -59,64 +65,6 @@ export async function callLLMReliable(prompt, {
   }
 
   throw new Error('All LLM providers failed (Agnes + DeepSeek + OpenRouter free)');
-}
-
-// Agnes occasionally returns "Invalid model name" 400s for a model name that
-// it accepts on other requests in the same minute (observed across simultaneous
-// dc/geopo/stock runs). Treat that error — plus 429/5xx — as transient and
-// retry once before falling through to the next provider.
-const AGNES_MAX_ATTEMPTS = 2;
-const AGNES_RETRY_DELAY  = 2_000;
-const AGNES_TRANSIENT_RE = /^Agnes (?:400|408|409|425|429|5\d\d)|Invalid model name|fetch failed|network|ECONN/i;
-
-async function _callAgnes(prompt, opts) {
-  let lastErr;
-  for (let attempt = 1; attempt <= AGNES_MAX_ATTEMPTS; attempt++) {
-    try {
-      return await _callAgnesOnce(prompt, opts);
-    } catch (err) {
-      lastErr = err;
-      const transient = AGNES_TRANSIENT_RE.test(err.message);
-      if (!transient || attempt === AGNES_MAX_ATTEMPTS) throw err;
-      console.warn(`✗ Agnes attempt ${attempt}/${AGNES_MAX_ATTEMPTS} (transient): ${err.message.slice(0, 200)} — retrying in ${AGNES_RETRY_DELAY / 1000}s`);
-      await new Promise(r => setTimeout(r, AGNES_RETRY_DELAY));
-    }
-  }
-  throw lastErr;
-}
-
-async function _callAgnesOnce(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
-  console.log('Calling Agnes AI...');
-  const body = {
-    model: 'agnes-2.0-flash',
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  };
-  if (responseFormat === 'json') body.response_format = { type: 'json_object' };
-
-  const response = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', {
-    signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Agnes ${response.status}: ${err.slice(0, 1000)}`);
-  }
-
-  const result = await response.json();
-  const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error('Agnes returned empty response');
-  if (content.length < minContentLength) {
-    throw new Error(`Agnes response too short (${content.length} chars, need ≥${minContentLength})`);
-  }
-  console.log('✓ Success: Agnes');
-  return content;
 }
 
 async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
