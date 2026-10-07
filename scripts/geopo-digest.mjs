@@ -7,6 +7,7 @@
 
 import { writeFile } from 'fs/promises';
 import { isCapableModel } from './lib/model-filter.mjs';
+import { broadcastTelegram } from './lib/telegram.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -544,57 +545,18 @@ async function callDeepSeek(prompt) {
 }
 
 // -- Telegram delivery -------------------------------------------------------
+// Chunking, retries and chat+channel fan-out live in lib/telegram.mjs, shared
+// with the other digests.
 
 async function sendTelegram(text) {
-  const MAX_LEN = 4000;
-  const chunks  = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LEN) { chunks.push(remaining); break; }
-    // Split on newline closest to MAX_LEN
-    let splitAt = remaining.lastIndexOf('\n', MAX_LEN);
-    if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  // Fan out to every configured destination (private chat + channel).
-  // One destination failing must not block the others, so we collect errors
-  // and only throw at the end if every destination failed.
-  const destinations = [
-    { label: 'chat',    chatId: CHAT_ID },
-    { label: 'channel', chatId: CHANNEL_CHAT_ID },
-  ].filter(d => d.chatId);
-
-  const errors = [];
-  let   delivered = 0;
-
-  for (const { label, chatId } of destinations) {
-    try {
-      for (let i = 0; i < chunks.length; i++) {
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: chunks[i] }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Telegram API error: ${err}`);
-        }
-        console.log(`[${label}] Sent chunk ${i + 1}/${chunks.length}`);
-      }
-      delivered++;
-    } catch (err) {
-      console.warn(`[${label}] delivery failed: ${err.message}`);
-      errors.push(`${label}: ${err.message}`);
-    }
-  }
-
-  if (delivered === 0) {
-    throw new Error(`All Telegram destinations failed — ${errors.join('; ')}`);
-  }
+  await broadcastTelegram({
+    botToken: BOT_TOKEN,
+    destinations: [
+      { label: 'chat',    chatId: CHAT_ID },
+      { label: 'channel', chatId: CHANNEL_CHAT_ID },
+    ],
+    text,
+  });
 }
 
 // -- Main --------------------------------------------------------------------

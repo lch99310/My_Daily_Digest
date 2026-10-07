@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
 import { fetchFundamentals } from './lib/yahoo.mjs';
+import { telegramApiWithRetry } from './lib/telegram.mjs';
 
 const BOT_TOKEN       = process.env.FINANCE_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID         = process.env.FINANCE_TELEGRAM_CHAT_ID || '';
@@ -178,23 +179,15 @@ async function sendTelegram(text, parseMode) {
   ].filter(d => d.chatId);
 
   for (const { label, chatId } of destinations) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (!res.ok) {
-          const err = await res.text();
-          console.warn(`[${label}] sendMessage HTTP ${res.status}: ${err.slice(0, 200)}`);
-        }
-        break;
-      } catch (err) {
-        console.warn(`[${label}] attempt ${attempt}/3: ${err.message}`);
-        if (attempt < 3) await new Promise(r => setTimeout(r, 1500 * attempt));
-      }
+    try {
+      await telegramApiWithRetry({
+        botToken: BOT_TOKEN,
+        method: 'sendMessage',
+        payload: { chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true },
+        label,
+      });
+    } catch (err) {
+      console.warn(`[${label}] sendMessage failed: ${err.message}`);
     }
   }
 }

@@ -7,6 +7,7 @@
 
 import { writeFile } from 'fs/promises';
 import { isCapableModel } from './lib/model-filter.mjs';
+import { broadcastTelegram } from './lib/telegram.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -568,90 +569,18 @@ async function callDeepSeek(prompt) {
 }
 
 // -- Telegram delivery -------------------------------------------------------
-
-// Telegram's edge occasionally drops a connection mid-delivery, surfacing as a
-// bare `fetch failed` (undici network error) or a transient 429/5xx. A single
-// blip on one chunk must not abandon the whole briefing, so each chunk send is
-// retried with exponential backoff before giving up.
-const TG_MAX_ATTEMPTS   = 4;
-const TG_BACKOFF_MS      = [1_000, 2_000, 4_000];   // waits between attempts 1→2, 2→3, 3→4
-const TG_TRANSIENT_RE    = /fetch failed|network|ECONN|ETIMEDOUT|EAI_AGAIN|socket|terminated|aborted|timed out/i;
-
-async function sendChunkWithRetry(label, chatId, chunk, index, total) {
-  let lastErr;
-  for (let attempt = 1; attempt <= TG_MAX_ATTEMPTS; attempt++) {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: chunk }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        const err = new Error(`Telegram API error ${res.status}: ${body.slice(0, 300)}`);
-        // 429 (rate limit) and 5xx are transient; 4xx (bad token/chat) are not.
-        err.retryable = res.status === 429 || res.status >= 500;
-        // Honour Telegram's retry_after hint when present.
-        if (res.status === 429) {
-          try { err.retryAfterMs = (JSON.parse(body).parameters?.retry_after || 1) * 1000; }
-          catch { /* fall back to default backoff */ }
-        }
-        throw err;
-      }
-      console.log(`[${label}] Sent chunk ${index + 1}/${total}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
-      return;
-    } catch (err) {
-      lastErr = err;
-      const retryable = err.retryable ?? TG_TRANSIENT_RE.test(err.message);
-      if (!retryable || attempt === TG_MAX_ATTEMPTS) throw err;
-      const wait = err.retryAfterMs ?? TG_BACKOFF_MS[attempt - 1] ?? 4_000;
-      console.warn(`[${label}] chunk ${index + 1}/${total} attempt ${attempt}/${TG_MAX_ATTEMPTS} failed (${err.message.slice(0, 120)}) — retrying in ${wait / 1000}s`);
-      await new Promise(r => setTimeout(r, wait));
-    }
-  }
-  throw lastErr;
-}
+// Chunking, retries and chat+channel fan-out live in lib/telegram.mjs, shared
+// with the other digests.
 
 async function sendTelegram(text) {
-  const MAX_LEN = 4000;
-  const chunks  = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LEN) { chunks.push(remaining); break; }
-    let splitAt = remaining.lastIndexOf('\n', MAX_LEN);
-    if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  // Fan out to every configured destination (private chat + channel).
-  // One destination failing must not block the others, so we collect errors
-  // and only throw at the end if every destination failed.
-  const destinations = [
-    { label: 'chat',    chatId: CHAT_ID },
-    { label: 'channel', chatId: CHANNEL_CHAT_ID },
-  ].filter(d => d.chatId);
-
-  const errors = [];
-  let   delivered = 0;
-
-  for (const { label, chatId } of destinations) {
-    try {
-      for (let i = 0; i < chunks.length; i++) {
-        await sendChunkWithRetry(label, chatId, chunks[i], i, chunks.length);
-      }
-      delivered++;
-    } catch (err) {
-      console.warn(`[${label}] delivery failed: ${err.message}`);
-      errors.push(`${label}: ${err.message}`);
-    }
-  }
-
-  if (delivered === 0) {
-    throw new Error(`All Telegram destinations failed — ${errors.join('; ')}`);
-  }
+  await broadcastTelegram({
+    botToken: BOT_TOKEN,
+    destinations: [
+      { label: 'chat',    chatId: CHAT_ID },
+      { label: 'channel', chatId: CHANNEL_CHAT_ID },
+    ],
+    text,
+  });
 }
 
 // -- Main --------------------------------------------------------------------
