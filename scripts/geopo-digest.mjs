@@ -7,6 +7,8 @@
 
 import { writeFile } from 'fs/promises';
 import { isCapableModel } from './lib/model-filter.mjs';
+import { broadcastTelegram } from './lib/telegram.mjs';
+import { callAgnes, describeCompletion } from './lib/agnes.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -397,84 +399,6 @@ async function tryModelsSequentially(models, prompt) {
   throw new Error('All OpenRouter models failed');
 }
 
-// -- Agnes AI (first-priority provider) --------------------------------------
-// Tried before any OpenRouter free model. Falls through to the existing flow
-// (OpenRouter free → DeepSeek paid) on any failure.
-//
-// Agnes occasionally returns "Invalid model name" 400s for a model name that
-// it accepts on other concurrent requests (observed across simultaneous
-// dc/geopo/stock runs in the same minute). Treat that error — plus 429/5xx —
-// as transient and retry once before falling through.
-
-// An empty or truncated 200 is transient too: Agnes returns one every so often
-// for a prompt it answers fine on the next call (2026-09-26 run 193 died this
-// way while the data-center digest got a full answer 25 minutes earlier), so a
-// retry is far cheaper than falling through to the free-model gauntlet.
-const AGNES_MAX_ATTEMPTS = 3;
-const AGNES_RETRY_DELAY  = 2_000;
-const AGNES_TRANSIENT_RE = /^Agnes (?:400|408|409|425|429|5\d\d)|Invalid model name|fetch failed|network|ECONN|empty response|response too short/i;
-
-async function callAgnes(prompt) {
-  let lastErr;
-  for (let attempt = 1; attempt <= AGNES_MAX_ATTEMPTS; attempt++) {
-    try {
-      return await callAgnesOnce(prompt);
-    } catch (err) {
-      lastErr = err;
-      const transient = AGNES_TRANSIENT_RE.test(err.message);
-      if (!transient || attempt === AGNES_MAX_ATTEMPTS) throw err;
-      console.warn(`✗ Agnes attempt ${attempt}/${AGNES_MAX_ATTEMPTS} (transient): ${err.message.slice(0, 200)} — retrying in ${AGNES_RETRY_DELAY / 1000}s`);
-      await new Promise(r => setTimeout(r, AGNES_RETRY_DELAY));
-    }
-  }
-  throw lastErr;
-}
-
-async function callAgnesOnce(prompt) {
-  console.log('Trying Agnes AI...');
-  const response = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', {
-    signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${AGNES_AI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'agnes-2.0-flash',
-      max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Agnes ${response.status}: ${err.slice(0, 1000)}`);
-  }
-
-  const result = await response.json();
-  const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error(`Agnes returned empty response (${describeCompletion(result)})`);
-  if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`Agnes response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH}; ${describeCompletion(result)})`);
-  }
-  return content;
-}
-
-// An empty or stunted completion tells us nothing on its own. finish_reason and
-// the token counts say whether the model hit the output cap, spent the whole
-// budget on hidden reasoning, or simply returned nothing — three very different
-// bugs that otherwise all read as "empty response" in the logs.
-function describeCompletion(result) {
-  const choice    = result.choices?.[0] || {};
-  const usage     = result.usage || {};
-  const reasoning = choice.message?.reasoning_content || choice.message?.reasoning || '';
-  const parts = [`finish_reason=${choice.finish_reason ?? 'n/a'}`];
-  if (usage.completion_tokens != null) parts.push(`completion_tokens=${usage.completion_tokens}`);
-  if (usage.reasoning_tokens  != null) parts.push(`reasoning_tokens=${usage.reasoning_tokens}`);
-  if (reasoning) parts.push(`reasoning_chars=${reasoning.length}`);
-  return parts.join(', ');
-}
-
 // -- DeepSeek paid fallback ---------------------------------------------------
 // Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
 
@@ -544,57 +468,18 @@ async function callDeepSeek(prompt) {
 }
 
 // -- Telegram delivery -------------------------------------------------------
+// Chunking, retries and chat+channel fan-out live in lib/telegram.mjs, shared
+// with the other digests.
 
 async function sendTelegram(text) {
-  const MAX_LEN = 4000;
-  const chunks  = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LEN) { chunks.push(remaining); break; }
-    // Split on newline closest to MAX_LEN
-    let splitAt = remaining.lastIndexOf('\n', MAX_LEN);
-    if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  // Fan out to every configured destination (private chat + channel).
-  // One destination failing must not block the others, so we collect errors
-  // and only throw at the end if every destination failed.
-  const destinations = [
-    { label: 'chat',    chatId: CHAT_ID },
-    { label: 'channel', chatId: CHANNEL_CHAT_ID },
-  ].filter(d => d.chatId);
-
-  const errors = [];
-  let   delivered = 0;
-
-  for (const { label, chatId } of destinations) {
-    try {
-      for (let i = 0; i < chunks.length; i++) {
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: chunks[i] }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Telegram API error: ${err}`);
-        }
-        console.log(`[${label}] Sent chunk ${i + 1}/${chunks.length}`);
-      }
-      delivered++;
-    } catch (err) {
-      console.warn(`[${label}] delivery failed: ${err.message}`);
-      errors.push(`${label}: ${err.message}`);
-    }
-  }
-
-  if (delivered === 0) {
-    throw new Error(`All Telegram destinations failed — ${errors.join('; ')}`);
-  }
+  await broadcastTelegram({
+    botToken: BOT_TOKEN,
+    destinations: [
+      { label: 'chat',    chatId: CHAT_ID },
+      { label: 'channel', chatId: CHANNEL_CHAT_ID },
+    ],
+    text,
+  });
 }
 
 // -- Main --------------------------------------------------------------------
@@ -641,7 +526,9 @@ async function main() {
   // 1) Agnes AI (first priority)
   if (AGNES_AI_API_KEY) {
     try {
-      briefing = await callAgnes(prompt);
+      briefing = await callAgnes(prompt, {
+        apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, timeoutMs: ABSOLUTE_TIMEOUT,
+      });
       console.log('✓ Success: Agnes AI');
     } catch (err) {
       console.warn(`✗ Agnes AI: ${err.message}`);

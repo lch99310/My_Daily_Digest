@@ -15,6 +15,7 @@ import { fetchSeries, summarizeSeries, toYoYSeries, fetchNextReleaseDate } from 
 import { fetchHistory } from './lib/yahoo.mjs';
 import { buildSparklineUrl, buildMultiSparklineUrl, shortenChartUrl } from './lib/quickchart.mjs';
 import { fetchLatestQuarterlyCapex, formatCapexB, shortPeriodLabel, periodSpanLabel } from './lib/sec-edgar.mjs';
+import { telegramApiWithRetry } from './lib/telegram.mjs';
 
 const FRED_API_KEY    = process.env.FRED_API_KEY || '';
 const BOT_TOKEN       = process.env.FINANCE_TELEGRAM_BOT_TOKEN || '';
@@ -174,19 +175,6 @@ const DESTINATIONS = [
   { label: 'channel', chatId: CHANNEL_CHAT_ID },
 ].filter(d => d.chatId);
 
-async function fetchWithRetry(url, opts, { label, attempts = 3 } = {}) {
-  for (let i = 1; i <= attempts; i++) {
-    try {
-      const res = await fetch(url, opts);
-      return res;
-    } catch (err) {
-      console.warn(`[${label}] fetch attempt ${i}/${attempts} failed: ${err.message}`);
-      if (i < attempts) await new Promise(r => setTimeout(r, 1500 * i));
-    }
-  }
-  return null;
-}
-
 // previewUrl (Bot API 7.0+): when set, Telegram renders a preview of that URL
 // BELOW the message text in the same bubble (show_above_text: false).
 // We use this to put chart photos beneath each indicator card without sending
@@ -204,23 +192,10 @@ async function sendMessage(text, parseMode, previewUrl) {
     } else {
       body.disable_web_page_preview = true;
     }
-    const res = await fetchWithRetry(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
-      },
-      { label },
-    );
-    if (!res) {
-      console.warn(`[${label}] sendMessage gave up after retries`);
-      continue;
-    }
-    if (!res.ok) {
-      const err = await res.text();
-      console.warn(`[${label}] sendMessage HTTP ${res.status}: ${err.slice(0, 300)}`);
+    try {
+      await telegramApiWithRetry({ botToken: BOT_TOKEN, method: 'sendMessage', payload: body, label });
+    } catch (err) {
+      console.warn(`[${label}] sendMessage failed: ${err.message}`);
     }
   }
 }
@@ -233,23 +208,10 @@ async function sendPhoto(photoUrl, caption, parseMode) {
     const body = { chat_id: chatId, photo: photoUrl };
     if (caption) body.caption = caption;
     if (parseMode) body.parse_mode = parseMode;
-    const res = await fetchWithRetry(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
-      },
-      { label },
-    );
-    if (!res) {
-      console.warn(`[${label}] sendPhoto gave up after retries`);
-      continue;
-    }
-    if (!res.ok) {
-      const err = await res.text();
-      console.warn(`[${label}] sendPhoto HTTP ${res.status}: ${err.slice(0, 300)}`);
+    try {
+      await telegramApiWithRetry({ botToken: BOT_TOKEN, method: 'sendPhoto', payload: body, label });
+    } catch (err) {
+      console.warn(`[${label}] sendPhoto failed: ${err.message}`);
     }
   }
 }

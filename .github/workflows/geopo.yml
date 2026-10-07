@@ -51,7 +51,9 @@ jobs:
       # ------------------------------------------------------------------
       # 4. Upload briefing as artifact (for review)
       # ------------------------------------------------------------------
+      # Runs even when delivery fails so the generated briefing isn't lost.
       - name: Upload briefing artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: geopo-briefing-${{ github.run_number }}

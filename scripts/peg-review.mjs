@@ -15,6 +15,7 @@ import { dirname, resolve } from 'path';
 import { fetchFeed, dedupeByTitle, filterByAge, sortByDateDesc } from './lib/rss.mjs';
 import { fetchLatestQuarterlyCapex, formatCapexB, shortPeriodLabel } from './lib/sec-edgar.mjs';
 import { callLLMReliable } from './lib/llm.mjs';
+import { telegramApiWithRetry } from './lib/telegram.mjs';
 
 const BOT_TOKEN       = process.env.FINANCE_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID         = process.env.FINANCE_TELEGRAM_CHAT_ID || '';
@@ -240,18 +241,14 @@ async function sendTelegram(text, parseMode) {
 
   for (const { label, chatId } of destinations) {
     try {
-      const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true }),
-        signal: AbortSignal.timeout(15_000),
+      await telegramApiWithRetry({
+        botToken: BOT_TOKEN,
+        method: 'sendMessage',
+        payload: { chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true },
+        label,
       });
-      if (!res.ok) {
-        const err = await res.text();
-        console.warn(`[${label}] sendMessage failed: ${err.slice(0, 200)}`);
-      }
     } catch (err) {
-      console.warn(`[${label}] sendMessage threw: ${err.message}`);
+      console.warn(`[${label}] sendMessage failed: ${err.message}`);
     }
   }
 }

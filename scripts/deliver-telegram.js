@@ -3,59 +3,23 @@
 // Usage: node deliver-telegram.js <file>
 
 import { readFile } from 'fs/promises';
+import { splitMessage, telegramApiWithRetry } from './lib/telegram.mjs';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 async function sendTelegram(text) {
-  const MAX_LEN = 4000;
-  const chunks = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LEN) {
-      chunks.push(remaining);
-      break;
-    }
-    let splitAt = remaining.lastIndexOf('\n', MAX_LEN);
-    if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt);
-  }
-
-  for (const chunk of chunks) {
-    const res = await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: CHAT_ID,
-          text: chunk,
-          parse_mode: 'Markdown',
-          disable_web_page_preview: true
-        })
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.json();
-      if (err.description && err.description.includes("can't parse")) {
-        await fetch(
-          `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: CHAT_ID,
-              text: chunk,
-              disable_web_page_preview: true
-            })
-          }
-        );
-      } else {
-        console.error(`Telegram error: ${err.description}`);
-        throw new Error(`Telegram API error: ${err.description}`);
-      }
+  const chunks = splitMessage(text);
+  for (let i = 0; i < chunks.length; i++) {
+    const tag = `chunk ${i + 1}/${chunks.length}`;
+    const payload = { chat_id: CHAT_ID, text: chunks[i], parse_mode: 'Markdown', disable_web_page_preview: true };
+    try {
+      await telegramApiWithRetry({ botToken: BOT_TOKEN, method: 'sendMessage', payload, tag });
+    } catch (err) {
+      // LLM output isn't always valid Telegram Markdown — resend as plain text.
+      if (!err.message.includes("can't parse")) throw err;
+      delete payload.parse_mode;
+      await telegramApiWithRetry({ botToken: BOT_TOKEN, method: 'sendMessage', payload, tag });
     }
     if (chunks.length > 1) await new Promise(r => setTimeout(r, 500));
   }

@@ -14,6 +14,7 @@ import { fetchQuotesResilient, fetchFundamentals, fetch10YTreasury } from './lib
 import { calcFairPriceEPS, calcFairPriceFCF } from './lib/fair-price.mjs';
 import { fetchFeed, dedupeByTitle, filterByAge, sortByDateDesc } from './lib/rss.mjs';
 import { callLLMReliable } from './lib/llm.mjs';
+import { broadcastTelegram } from './lib/telegram.mjs';
 
 const BOT_TOKEN       = process.env.FINANCE_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID         = process.env.FINANCE_TELEGRAM_CHAT_ID || '';
@@ -234,68 +235,20 @@ function renderHealthBlock(params) {
   return `⚠️ 缺資料 (採 config 快取): ${missing.join('、')}`;
 }
 
-// -- Telegram delivery ------------------------------------------------------
-
-async function fetchWithRetry(url, opts, { label, attempts = 3 } = {}) {
-  for (let i = 1; i <= attempts; i++) {
-    try {
-      return await fetch(url, opts);
-    } catch (err) {
-      console.warn(`[${label}] fetch attempt ${i}/${attempts} failed: ${err.message}`);
-      if (i < attempts) await new Promise(r => setTimeout(r, 1500 * i));
-    }
-  }
-  return null;
-}
+// -- Telegram delivery -------------------------------------------------------
+// Chunking, retries and chat+channel fan-out live in lib/telegram.mjs, shared
+// with the other digests.
 
 async function sendTelegram(text) {
-  const MAX_LEN = 4000;
-  const chunks = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LEN) { chunks.push(remaining); break; }
-    let splitAt = remaining.lastIndexOf('\n', MAX_LEN);
-    if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN;
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  const destinations = [
-    { label: 'chat',    chatId: CHAT_ID },
-    { label: 'channel', chatId: CHANNEL_CHAT_ID },
-  ].filter(d => d.chatId);
-
-  const errors = [];
-  let delivered = 0;
-
-  for (const { label, chatId } of destinations) {
-    try {
-      for (let i = 0; i < chunks.length; i++) {
-        const res = await fetchWithRetry(
-          `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId, text: chunks[i], disable_web_page_preview: true }),
-            signal: AbortSignal.timeout(15_000),
-          },
-          { label },
-        );
-        if (!res) throw new Error('all retries exhausted');
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Telegram API error: ${err.slice(0, 200)}`);
-        }
-        console.log(`[${label}] Sent chunk ${i + 1}/${chunks.length}`);
-      }
-      delivered++;
-    } catch (err) {
-      console.warn(`[${label}] delivery failed: ${err.message}`);
-      errors.push(`${label}: ${err.message}`);
-    }
-  }
-
-  if (delivered === 0) throw new Error(`All Telegram destinations failed — ${errors.join('; ')}`);
+  await broadcastTelegram({
+    botToken: BOT_TOKEN,
+    destinations: [
+      { label: 'chat',    chatId: CHAT_ID },
+      { label: 'channel', chatId: CHANNEL_CHAT_ID },
+    ],
+    text,
+    extra: { disable_web_page_preview: true },
+  });
 }
 
 // -- Main -------------------------------------------------------------------
