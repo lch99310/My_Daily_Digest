@@ -9,6 +9,7 @@ import { writeFile } from 'fs/promises';
 import { isCapableModel } from './lib/model-filter.mjs';
 import { broadcastTelegram } from './lib/telegram.mjs';
 import { callAgnes } from './lib/agnes.mjs';
+import { selectArticles, formatArticleList, groundBriefing } from './lib/grounding.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -30,11 +31,26 @@ if (!CHAT_ID && !CHANNEL_CHAT_ID) {
 const MAX_TOKENS  = 8500;
 const OUTPUT_FILE = '/tmp/dc-briefing.md';
 
-// Minimum acceptable response length. A full briefing (19 cards across
-// APAC×5 / Australia×5 / ROW×3 / AI×Energy×3 / Bytedance×3 + summary)
-// must be at least ~3000 chars; anything shorter means the model
-// truncated or couldn't follow the format.
-const MIN_CONTENT_LENGTH = 3000;
+// Minimum acceptable response length. Section limits are maximums now (the
+// model writes fewer cards rather than padding a thin day), so this only
+// catches truncated or off-format output.
+const MIN_CONTENT_LENGTH = 1500;
+
+// A response must keep at least this many cards after grounding (cards that
+// cite no real article are dropped). Fewer means the model ignored the
+// article-number format or invented most of its cards — try the next model.
+const MIN_GROUNDED_CARDS = 4;
+
+// Prompt budget: at most PER_SOURCE items per feed so DC Post / DCK / the
+// hyperscaler trackers can't push the small Australia and ByteDance feeds out.
+const PROMPT_PER_SOURCE = 10;
+const PROMPT_MAX_ITEMS  = 120;
+
+const GROUNDING = {
+  cardSections:   ['🏗', '🇦🇺', '🌐', '⚡', '🔥'],
+  summarySection: '💡',
+  fields:         ['標題', '摘要', '影響'],
+};
 
 // Data center industry RSS feeds — no API key needed
 const NEWS_FEEDS = [
@@ -52,6 +68,10 @@ const NEWS_FEEDS = [
   { name: 'Microsoft Infra',    url: 'https://news.google.com/rss/search?q=when:24h+%22Microsoft%22+(%22data+center%22+OR+%22data+centre%22+OR+PPA+OR+%22Three+Mile+Island%22+OR+Helion)&hl=en-US&gl=US&ceid=US:en' },
   { name: 'Google Cloud Infra', url: 'https://news.google.com/rss/search?q=when:24h+%22Google%22+(%22data+center%22+OR+%22data+centre%22+OR+PPA+OR+Kairos+OR+SMR+OR+%2224%2F7+CFE%22)&hl=en-US&gl=US&ceid=US:en' },
   { name: 'Meta Infra',         url: 'https://news.google.com/rss/search?q=when:24h+%22Meta%22+(%22data+center%22+OR+%22data+centre%22+OR+Llama+OR+Hyperion+OR+PPA)&hl=en-US&gl=US&ceid=US:en' },
+
+  // ByteDance tracker — feeds the 🔥 Bytedance / TikTok card. Without it the
+  // card only had whatever the industry feeds happened to carry that day.
+  { name: 'ByteDance Infra',    url: 'https://news.google.com/rss/search?q=when:24h+(ByteDance+OR+TikTok+OR+Douyin+OR+Volcano+Engine)+(%22data+center%22+OR+%22data+centre%22+OR+datacenter+OR+GPU+OR+%22AI+chips%22+OR+%22AI+infrastructure%22)&hl=en-US&gl=US&ceid=US:en' },
 
   // Australia-focused company trackers — Google News RSS proxy (AU locale).
   // These surface both corporate press releases and media coverage, so a
@@ -138,27 +158,34 @@ async function fetchFeed({ name, url }) {
 
 // -- Prompt ------------------------------------------------------------------
 
+// `articles` is the exact list numbered in the prompt; groundBriefing() later
+// resolves the [#N] references in each card's 來源 against the same list.
 function buildPrompt(articles) {
   const today = new Date().toLocaleDateString('zh-TW', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   });
 
-  const sourceSet = [...new Set(articles.map(a => a.source).filter(Boolean))];
-  const sourceList = sourceSet.join('、');
+  const articleList = formatArticleList(articles);
 
-  const articleList = articles
-    .slice(0, 120)
-    .map((a, i) => {
-      const src = a.source ? ` [來源：${a.source}]` : '';
-      return `${i + 1}.${src} ${a.title}${a.desc ? '\n   ' + a.desc : ''}`;
-    })
-    .join('\n\n');
+  const card = (summaryHint = '2 至 3 句話，100 至 150 字', impactHint = '80 至 120 字') => `━━━━━━━━━━━━━━━━━━━━
+標題：{一句話事件標題，20 字以內}
+摘要：{${summaryHint}}
+影響：{${impactHint}}
+來源：{引用的素材編號，例如 #12；綜合多則可寫 #12、#40}`;
 
   return `你是一位資深的資料中心產業分析師，正在為台灣讀者撰寫每日資料中心產業簡報。今天是 ${today}。
 
-## 過去 24 小時資料中心產業新聞（已標註原始媒體來源）
+## 過去 24 小時資料中心產業新聞（每則有素材編號 [#N] 與原始媒體來源）
 
 ${articleList}
+
+## 取材鐵則（最優先，違反即視為錯誤輸出）
+
+- **只寫上方素材裡的事**：每張卡片必須對應上方至少一則素材，摘要與影響中的事實（公司、地點、金額、容量、日期、人名、政策名稱）只能來自該素材。不得使用你自己的記憶或訓練資料補充任何事件，也不得添加素材中沒有的數字或細節。
+- **寧缺勿濫**：各分區標示的是「最多」張數，不是必須寫滿。素材不足就少寫；某分區完全沒有對應素材，就只寫「本日無相關更新」。湊數或編造的卡片會被系統刪除。
+- **來源欄位只填素材編號**：例如「來源：#12」或「來源：#12、#40」。系統會自動把編號換成媒體名稱與原文連結；沒有有效編號的卡片會被整張刪除。不要在其他欄位寫編號，也不要寫網址。
+- **同一則素材只能用在一張卡片**，不得重複。
+- 「💡 總結」只能談論本份簡報卡片中已出現的事件。
 
 ## 撰寫要求
 
@@ -168,159 +195,50 @@ ${articleList}
   - 每則先講「發生什麼事」，再剖析「為什麼重要」
   - 強調事實、脈絡與連動關係，拒絕模糊形容詞
   - 句子俐落、資訊密度高
-- **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「DCD、DCK」）。不得自行編造來源。
-- **資料取材**：要選擇對資料中心產業影響大的事件（包含：新建/擴建案、併購、技術突破、政策法規、供電/冷卻/AI算力相關、雲端服務商動態等）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期產業動態的掌握，但當前卡片仍須對應到真實的新聞事件。
-- **Hyperscaler 強制條款（重要）**：每日整份簡報必須至少**累計 3 則**事件與 AWS、Microsoft、Google、Meta 四家其中之一直接相關（可分散在 APAC / 澳洲 / ROW / AI×能源 任一卡片中累計，不要求集中）。理由：這四家是讀者重點追蹤對象。若上方素材四家動態不足 3 則，可結合你對近期已公開的真實事件補充，但仍須對應到真實新聞；並在「💡 總結」段落點名提及本日四家中誰最積極/最沉默。
+- **選材**：選擇對資料中心產業影響大的事件（新建/擴建案、併購、技術突破、政策法規、供電/冷卻/AI 算力、雲端服務商動態等）。「影響」欄位可以做分析推論，但推論的前提必須是素材中的事實。
+- **Hyperscaler 優先**：AWS、Microsoft、Google、Meta 是讀者重點追蹤對象。素材中若有這四家的相關事件，優先選入（可分散在任一分區）；素材中沒有就不要硬湊。並在「💡 總結」點名本日素材中四家誰最積極、誰沒有消息。
 - **地理分區與公司追蹤規則（嚴格遵守）**：
-  - 🏗️「APAC 資料中心動態 (Top 5)」：**僅限**地理上發生在亞太地區（APAC），但**不含澳洲與紐西蘭**的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度等亞太區域。若素材不足 5 則，可結合近期真實重大事件補充。
-  - 🇦🇺「澳洲資料中心動態 (Top 5)」：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。**取材來源不受限制**：只要事件地點在澳洲/紐西蘭，無論是來自 DCD、DCK、TechDay Asia、DC Post 等綜合產業媒體，或是 NEXTDC、AirTrunk、DCI Data Centers、Equinix AU、Digital Realty AU、Global Switch、Goodman Group、Macquarie Tech、Vocus、Firmus、CDC Data Centres 等公司專屬 feed，都應優先放入本區；重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group、**Firmus（Tasmania/Victoria 液冷 AI factory 新興業者）**、**CDC Data Centres（主權政府聚焦）** 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。**能源/電網層面**：AEMC、AEMO、Ausgrid、Endeavour Energy 等大型負載併網、ISP、市場規則變更，以及 **NABERS for Data Centres** 評等、**NSW REZ（Renewable Energy Zone）** 進度、**Western Sydney Aerotropolis** 規劃，只要牽涉資料中心用電或選址，都屬於本區高優先事件。**力求 5 張卡之間在子題上分散**：理想分配是 2 則業者動態 + 1 則電網/接入 + 1 則 NABERS/REZ/政策 + 1 則 Aerotropolis/聚落新建；若某類素材缺乏可調整，但避免 5 張全部都是同一家業者的 ASX 公告。若素材不足 5 則，可結合你對近期澳洲資料中心產業動態的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
-  - 🌐「ROW 資料中心動態 (Top 3)」：**僅限**地理上發生在**非 APAC 且非澳洲/紐西蘭**地區的資料中心產業重大事件。ROW = Rest of World，包含：北美、歐洲、中東、非洲、拉丁美洲等。
-  - ⚡「AI 算力 × 能源動態 (Top 3)」：**跨地理區**的「DC × 電力」主題卡。**僅限**以下類型事件：①hyperscaler 簽署的大規模 PPA（再生能源或核能）；②核能 restart / SMR / 核融合相關交易（Constellation、Talen、Kairos、Helion、X-energy、Oklo 等）；③電網層級的監管變化（FERC behind-the-meter 裁決、AEMO ISP 更新、Capacity Investment Scheme 等）；④BloombergNEF 等權威機構的企業 PPA / 清潔能源排名與分析；⑤大型資料中心 PUE / 冷卻技術突破與其能源影響。本卡與地理區的判斷標準不同：**只要主軸是「電力如何餵養 AI 算力」就放這裡**，可跨越地理區。**重要**：不要與其他卡片重複事件；同一則新聞若同時符合地理區與本卡，優先放本卡。若素材不足 3 則，可結合你對近期重大趨勢的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
-  - 🔥「Bytedance / TikTok 資料中心動態 (Top 3)」：**僅限**與 ByteDance、TikTok、抖音這家公司相關的資料中心重大消息（不限地區，只看是否與該公司有關）。從上方素材中挑出相關新聞；若素材不足 3 則，可結合你對近期 ByteDance 資料中心動態的掌握補充，但仍須對應到真實事件。如果確實完全無相關消息，則寫「本日無相關更新」。
+  - 🏗️「APAC 資料中心動態」（最多 5 則）：**僅限**地理上發生在亞太地區（APAC），但**不含澳洲與紐西蘭**的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度等亞太區域。
+  - 🇦🇺「澳洲資料中心動態」（最多 5 則）：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。**取材來源不受限制**：只要事件地點在澳洲/紐西蘭，無論是來自 DCD、DCK、TechDay Asia、DC Post 等綜合產業媒體，或是 NEXTDC、AirTrunk、DCI Data Centers、Equinix AU、Digital Realty AU、Global Switch、Goodman Group、Macquarie Tech、Vocus、Firmus、CDC Data Centres 等公司專屬 feed，都應優先放入本區。重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group、**Firmus（Tasmania/Victoria 液冷 AI factory 新興業者）**、**CDC Data Centres（主權政府聚焦）** 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。**能源/電網層面**：AEMC、AEMO、Ausgrid、Endeavour Energy 等大型負載併網、ISP、市場規則變更，以及 **NABERS for Data Centres** 評等、**NSW REZ（Renewable Energy Zone）** 進度、**Western Sydney Aerotropolis** 規劃，只要牽涉資料中心用電或選址，都屬於本區高優先事件。素材允許時，盡量讓各卡在子題上分散（業者動態、電網/接入、NABERS/REZ/政策、聚落新建），避免全部都是同一家業者的 ASX 公告。
+  - 🌐「ROW 資料中心動態」（最多 3 則）：**僅限**地理上發生在**非 APAC 且非澳洲/紐西蘭**地區的資料中心產業重大事件。ROW = Rest of World，包含：北美、歐洲、中東、非洲、拉丁美洲等。
+  - ⚡「AI 算力 × 能源動態」（最多 3 則）：**跨地理區**的「DC × 電力」主題卡。**僅限**以下類型事件：①hyperscaler 簽署的大規模 PPA（再生能源或核能）；②核能 restart / SMR / 核融合相關交易（Constellation、Talen、Kairos、Helion、X-energy、Oklo 等）；③電網層級的監管變化（FERC behind-the-meter 裁決、AEMO ISP 更新、Capacity Investment Scheme 等）；④BloombergNEF 等權威機構的企業 PPA / 清潔能源排名與分析；⑤大型資料中心 PUE / 冷卻技術突破與其能源影響。**只要主軸是「電力如何餵養 AI 算力」就放這裡**，可跨越地理區；同一則新聞若同時符合地理區與本卡，優先放本卡。
+  - 🔥「Bytedance / TikTok 資料中心動態」（最多 3 則）：**僅限**素材中明確提到 ByteDance、TikTok 或抖音的資料中心相關消息（不限地區）。素材沒有提到這家公司，就寫「本日無相關更新」，絕不可自行推測或編造。
   - APAC、澳洲、ROW 三區的分區判斷標準是事件的**地理發生地點**；同一事件只能出現在其中一區，不得重複。AI×能源、Bytedance/TikTok 的判斷標準是**主題或公司**，不限地區，但同一事件不得同時出現在地理區與這兩張主題卡——主題卡優先。
 
 
 ## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
 
+每個分區先寫分區標題，接著重複卡片區塊（不超過該分區上限）；若該分區沒有對應素材，分區標題下只寫「本日無相關更新」。
+
 🏗️ APAC 資料中心動態 (Top 5)
 
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，說明事件背景與最新進展，100 至 150 字，晚點風格}
-影響：{說明對區域資料中心市場或產業格局的具體影響，80 至 120 字}
-來源：{從上方清單挑選的媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
+${card('2 至 3 句話，說明事件背景與最新進展，100 至 150 字，晚點風格', '說明對區域資料中心市場或產業格局的具體影響，80 至 120 字')}
 
 🇦🇺 澳洲資料中心動態 (Top 5)
 
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-{如確實完全無任何澳洲/紐西蘭相關消息，以上卡片替換為：「本日無相關更新」}
+${card()}
 
 🌐 ROW 資料中心動態 (Top 3)
 
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
+${card()}
 
 ⚡ AI 算力 × 能源動態 (Top 3)
 
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字，聚焦 PPA / SMR / 核能 / 電網監管 / 冷卻能效突破}
-影響：{80 至 120 字，說明對 hyperscaler 電力策略或整體 DC 產業電力供需的影響}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-{如確實完全無任何 AI 算力×能源相關消息，以上卡片替換為：「本日無相關更新」}
+${card('2 至 3 句話，100 至 150 字，聚焦 PPA / SMR / 核能 / 電網監管 / 冷卻能效突破', '80 至 120 字，說明對 hyperscaler 電力策略或整體 DC 產業電力供需的影響')}
 
 🔥 Bytedance / TikTok 資料中心動態 (Top 3)
 
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20 字以內}
-摘要：{2 至 3 句話，100 至 150 字}
-影響：{80 至 120 字}
-來源：{媒體名稱}
-
-{如確實完全無任何 Bytedance/TikTok 相關消息，以上卡片替換為：「本日無相關更新」}
+${card()}
 
 💡 總結與產業趨勢觀察
 快速總結：{2 至 3 句話，綜合分析今日資料中心產業整體動態，點出最關鍵的趨勢}
 
-Hyperscaler 觀察：{1 至 2 句話，點名本日 AWS / Microsoft / Google / Meta 四家中誰最積極、誰最沉默，並提及具體事件}
+Hyperscaler 觀察：{1 至 2 句話，點名本日素材中 AWS / Microsoft / Google / Meta 四家誰最積極、誰沒有消息，並提及具體事件}
 
 關鍵趨勢：
-• {趨勢一，帶具體事件}
-• {趨勢二，帶具體事件}
-• {趨勢三，帶具體事件}
+• {趨勢一，帶本份簡報中的具體事件}
+• {趨勢二，帶本份簡報中的具體事件}
+• {趨勢三，帶本份簡報中的具體事件}
 
 結論：{一句話總結資料中心產業短中期展望}
 `;
@@ -461,12 +379,12 @@ async function callModel(model, prompt) {
   return content;
 }
 
-// Try models one at a time — stop at the first success.
-async function tryModelsSequentially(models, prompt) {
+// Try models one at a time — stop at the first response that passes `accept`.
+async function tryModelsSequentially(models, prompt, accept) {
   for (const model of models) {
     try {
       console.log(`Trying ${model}...`);
-      const result = await callModel(model, prompt);
+      const result = accept(await callModel(model, prompt));
       console.log(`✓ Success: ${model}`);
       return result;
     } catch (err) {
@@ -522,6 +440,9 @@ async function sendTelegram(text) {
       { label: 'channel', chatId: CHANNEL_CHAT_ID },
     ],
     text,
+    // Every card now carries its article link; keep Telegram from turning
+    // the first one into a preview card.
+    extra: { disable_web_page_preview: true },
   });
 }
 
@@ -560,15 +481,31 @@ async function main() {
   // Sort newest first
   fresh.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
-  const prompt   = buildPrompt(fresh);
+  const articles = selectArticles(fresh, { perSource: PROMPT_PER_SOURCE, max: PROMPT_MAX_ITEMS });
+  console.log(`Prompt articles: ${articles.length} (≤${PROMPT_PER_SOURCE} per source)`);
+
+  const prompt   = buildPrompt(articles);
   let   briefing;
+
+  // Every provider's output goes through grounding: cards that cite no real
+  // article number are dropped, 來源 becomes media name + original link.
+  const accept = raw => {
+    const unfenced = raw.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
+    const { text, kept, dropped } = groundBriefing(unfenced, articles, GROUNDING);
+    for (const d of dropped) console.warn(`  dropped card — ${d}`);
+    if (kept < MIN_GROUNDED_CARDS) {
+      throw new Error(`only ${kept} grounded cards (${dropped.length} dropped), need ≥${MIN_GROUNDED_CARDS}`);
+    }
+    console.log(`  grounded: kept ${kept} cards, dropped ${dropped.length}`);
+    return text;
+  };
 
   // 1) Agnes AI (first priority)
   if (AGNES_AI_API_KEY) {
     try {
-      briefing = await callAgnes(prompt, {
+      briefing = accept(await callAgnes(prompt, {
         apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, timeoutMs: ABSOLUTE_TIMEOUT,
-      });
+      }));
       console.log('✓ Success: Agnes AI');
     } catch (err) {
       console.warn(`✗ Agnes AI: ${err.message}`);
@@ -580,7 +517,7 @@ async function main() {
     const models = await fetchFreeModels();
     console.log(`Trying up to ${models.length} models sequentially...`);
     try {
-      briefing = await tryModelsSequentially(models, prompt);
+      briefing = await tryModelsSequentially(models, prompt, accept);
     } catch (err) {
       console.warn(`✗ OpenRouter free models: ${err.message.slice(0, 120)}`);
     }
@@ -589,11 +526,8 @@ async function main() {
   // 3) DeepSeek paid fallback (last resort)
   if (!briefing) {
     if (!DEEPSEEK_API_KEY) throw new Error('All upstream LLM providers failed and DEEPSEEK_API_KEY not configured');
-    briefing = await callDeepSeek(prompt);
+    briefing = accept(await callDeepSeek(prompt));
   }
-
-  // Strip code fences if model wrapped the output
-  briefing = briefing.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
 
   await writeFile(OUTPUT_FILE, briefing, 'utf-8');
   console.log(`Briefing written to ${OUTPUT_FILE} (${briefing.length} chars)`);

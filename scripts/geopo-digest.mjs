@@ -9,6 +9,7 @@ import { writeFile } from 'fs/promises';
 import { isCapableModel } from './lib/model-filter.mjs';
 import { broadcastTelegram } from './lib/telegram.mjs';
 import { callAgnes, describeCompletion } from './lib/agnes.mjs';
+import { selectArticles, formatArticleList, groundBriefing } from './lib/grounding.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
@@ -39,6 +40,21 @@ const OUTPUT_FILE = '/tmp/geopo-briefing.md';
 // means the model truncated or couldn't follow the format, so we reject it and
 // let the race continue to a larger model.
 const MIN_CONTENT_LENGTH = 2000;
+
+// A response must keep at least this many cards after grounding (cards that
+// cite no real article are dropped). Fewer means the model ignored the
+// article-number format or invented its cards — try the next model.
+const MIN_GROUNDED_CARDS = 5;
+
+// Prompt budget: newest first, at most PER_SOURCE items per feed.
+const PROMPT_PER_SOURCE = 8;
+const PROMPT_MAX_ITEMS  = 60;
+
+const GROUNDING = {
+  cardSections:   ['🔴', '🌍'],
+  summarySection: '💡',
+  fields:         ['標題', '摘要', '風險'],
+};
 
 // Free RSS feeds for geopolitical news — no API key needed.
 //
@@ -136,27 +152,18 @@ async function fetchFeed({ name, url }) {
 
 // -- Prompt ------------------------------------------------------------------
 
+// `articles` is the exact list numbered in the prompt; groundBriefing() later
+// resolves the [#N] references in each card's 來源 against the same list.
 function buildPrompt(articles) {
   const today = new Date().toLocaleDateString('zh-TW', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   });
 
-  // Enumerate the distinct source names so the model can only pick from
-  // real media we actually pulled — prevents hallucinated sources.
-  const sourceSet = [...new Set(articles.map(a => a.source).filter(Boolean))];
-  const sourceList = sourceSet.join('、');
-
-  const articleList = articles
-    .slice(0, 60)
-    .map((a, i) => {
-      const src = a.source ? ` [來源：${a.source}]` : '';
-      return `${i + 1}.${src} ${a.title}${a.desc ? '\n   ' + a.desc : ''}`;
-    })
-    .join('\n\n');
+  const articleList = formatArticleList(articles);
 
   return `你是一位資深的地緣政治記者，正在為台灣讀者撰寫每日地緣政治風險簡報。今天是 ${today}。
 
-## 過去 24 小時國際新聞（已標註原始媒體來源）
+## 過去 24 小時國際新聞（每則有素材編號 [#N] 與原始媒體來源）
 
 ${articleList}
 
@@ -168,8 +175,9 @@ ${articleList}
   - 每則先講「發生什麼事」，再剖析「為什麼重要」
   - 強調事實、脈絡與連動關係，拒絕模糊形容詞
   - 句子俐落、資訊密度高
-- **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「Reuters、BBC」）。不得自行編造來源。
-- **資料取材**：要選擇對地緣風險影響大的事件（包含：軍事、經濟等會對地緣格局影響大的事件）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期局勢的掌握，但當前卡片仍須對應到真實的新聞事件。
+- **取材鐵則（最優先）**：每張卡片必須對應上方至少一則素材，摘要中的事實（國家、人物、地點、數字、日期、武器/艦艇名稱）只能來自該素材，不得用你自己的記憶或訓練資料補充事件或細節。「風險」欄位可以做分析推論，但前提必須是素材中的事實。各分區標示的是「最多」張數，素材不足就少寫，不得湊數。
+- **來源欄位只填素材編號**：例如「來源：#12」或「來源：#12、#40」。系統會自動把編號換成媒體名稱與原文連結；沒有有效編號的卡片會被整張刪除。不要在其他欄位寫編號，也不要寫網址。同一則素材只能用在一張卡片。
+- **資料取材**：要選擇對地緣風險影響大的事件（包含：軍事、經濟等會對地緣格局影響大的事件）。「💡 總結」與黃金理由只能談論本份簡報卡片中已出現的事件。
 - **地理分區規則（嚴格遵守）**：
   - 🔴「中國周邊高風險地緣政治事件 (Top 5)」：**僅限**發生在地理上中國周邊區域的重大地緣風險事件，挑出最重要的前 5 則。所謂「中國周邊」指：台灣海峽、南海、東海、朝鮮半島、中印邊境、中亞鄰國、東南亞、日本、菲律賓等與中國地理上直接相鄰或密切關聯的區域。挑選順序以對區域安全格局影響的嚴重性與時效性排序，最重大的放第 1 則。
   - 🌍「全球其他重大地緣政治事件 (Top 3)」：**僅限**發生在地理上非中國周邊的其他地區的重大地緣風險事件。例如：中東、歐洲、非洲、美洲、南亞（不含中印邊境）等地區。
@@ -178,37 +186,39 @@ ${articleList}
 
 ## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
 
+每個分區先寫分區標題，接著重複卡片區塊（不超過該分區上限）；若該分區沒有對應素材，分區標題下只寫「本日無相關更新」。
+
 🔴 中國周邊高風險地緣政治事件 (Top 5)
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，說明事件背景與最新進展，100 至 150 字，晚點風格}
 風險：{說明對區域安全或全球秩序的具體威脅，80 至 120 字}
-來源：{從上方清單挑選的媒體名稱，供讀者自行判斷可信度}
+來源：{引用的素材編號，例如 #12；綜合多則可寫 #12、#40}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 🌍 全球其他重大地緣政治事件 (Top 3)
 
@@ -216,19 +226,19 @@ ${articleList}
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 ━━━━━━━━━━━━━━━━━━━━
 標題：{一句話事件標題，20 字以內}
 摘要：{2 至 3 句話，100 至 150 字}
 風險：{80 至 120 字}
-來源：{媒體名稱}
+來源：{素材編號}
 
 💡 總結與黃金市場影響評估
 快速總結：{2 至 3 句話，綜合分析今日整體地緣政治態勢，點出最關鍵的連動風險}
@@ -385,11 +395,11 @@ async function callModel(model, prompt) {
 // Sequential fallback costs only 1 request on a good day, vs N for parallel racing.
 // Dead models are detected quickly via idle timeout (30s), while active models
 // get up to 180s to finish generating.
-async function tryModelsSequentially(models, prompt) {
+async function tryModelsSequentially(models, prompt, accept) {
   for (const model of models) {
     try {
       console.log(`Trying ${model}...`);
-      const result = await callModel(model, prompt);
+      const result = accept(await callModel(model, prompt));
       console.log(`✓ Success: ${model}`);
       return result;
     } catch (err) {
@@ -479,6 +489,9 @@ async function sendTelegram(text) {
       { label: 'channel', chatId: CHANNEL_CHAT_ID },
     ],
     text,
+    // Every card now carries its article link; keep Telegram from turning
+    // the first one into a preview card.
+    extra: { disable_web_page_preview: true },
   });
 }
 
@@ -520,15 +533,31 @@ async function main() {
   // Sort newest first so the most recent items land at the top of the prompt
   fresh.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
-  const prompt   = buildPrompt(fresh);
+  const articles = selectArticles(fresh, { perSource: PROMPT_PER_SOURCE, max: PROMPT_MAX_ITEMS });
+  console.log(`Prompt articles: ${articles.length} (≤${PROMPT_PER_SOURCE} per source)`);
+
+  const prompt   = buildPrompt(articles);
   let   briefing;
+
+  // Every provider's output goes through grounding: cards that cite no real
+  // article number are dropped, 來源 becomes media name + original link.
+  const accept = raw => {
+    const unfenced = raw.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
+    const { text, kept, dropped } = groundBriefing(unfenced, articles, GROUNDING);
+    for (const d of dropped) console.warn(`  dropped card — ${d}`);
+    if (kept < MIN_GROUNDED_CARDS) {
+      throw new Error(`only ${kept} grounded cards (${dropped.length} dropped), need ≥${MIN_GROUNDED_CARDS}`);
+    }
+    console.log(`  grounded: kept ${kept} cards, dropped ${dropped.length}`);
+    return text;
+  };
 
   // 1) Agnes AI (first priority)
   if (AGNES_AI_API_KEY) {
     try {
-      briefing = await callAgnes(prompt, {
+      briefing = accept(await callAgnes(prompt, {
         apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, timeoutMs: ABSOLUTE_TIMEOUT,
-      });
+      }));
       console.log('✓ Success: Agnes AI');
     } catch (err) {
       console.warn(`✗ Agnes AI: ${err.message}`);
@@ -540,7 +569,7 @@ async function main() {
     const models = await fetchFreeModels();
     console.log(`Trying up to ${models.length} models sequentially...`);
     try {
-      briefing = await tryModelsSequentially(models, prompt);
+      briefing = await tryModelsSequentially(models, prompt, accept);
     } catch (err) {
       console.warn(`✗ OpenRouter free models: ${err.message.slice(0, 120)}`);
     }
@@ -549,11 +578,8 @@ async function main() {
   // 3) DeepSeek paid fallback (last resort)
   if (!briefing) {
     if (!DEEPSEEK_API_KEY) throw new Error('All upstream LLM providers failed and DEEPSEEK_API_KEY not configured');
-    briefing = await callDeepSeek(prompt);
+    briefing = accept(await callDeepSeek(prompt));
   }
-
-  // Strip code fences if model wrapped the output
-  briefing = briefing.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
 
   await writeFile(OUTPUT_FILE, briefing, 'utf-8');
   console.log(`Briefing written to ${OUTPUT_FILE} (${briefing.length} chars)`);
