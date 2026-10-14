@@ -90,9 +90,19 @@ export async function broadcastTelegram({ botToken, destinations, text, extra = 
     try {
       for (let i = 0; i < chunks.length; i++) {
         const tag = `chunk ${i + 1}/${chunks.length}`;
-        await telegramApiWithRetry({
-          botToken, method: 'sendMessage', payload: { chat_id: chatId, text: chunks[i], ...extra }, label, tag,
-        });
+        const payload = { chat_id: chatId, text: chunks[i], ...extra };
+        try {
+          await telegramApiWithRetry({ botToken, method: 'sendMessage', payload, label, tag });
+        } catch (err) {
+          // Rejected markup (e.g. a chunk split mid-tag) — resend as plain text
+          // rather than lose the chunk.
+          if (!payload.parse_mode || !err.message.includes("can't parse")) throw err;
+          console.warn(`[${label}] ${tag}: ${payload.parse_mode} rejected — resending as plain text`);
+          delete payload.parse_mode;
+          payload.text = payload.text.replace(/<[^>]+>/g, '')
+            .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+          await telegramApiWithRetry({ botToken, method: 'sendMessage', payload, label, tag });
+        }
         console.log(`[${label}] Sent ${tag}`);
       }
       delivered++;

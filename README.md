@@ -62,9 +62,7 @@ Go to your repo **Settings → Secrets and variables → Actions** and add:
 
 | Secret | Required | Used By |
 |--------|----------|---------|
-| `AGNES_AI_API_KEY` | Recommended | First-priority LLM for all digests — get one at [agnes-ai.com](https://agnes-ai.com/) |
-| `OPENROUTER_FREE_API_KEY` | Yes | Free fallback for all digests — get one free at [openrouter.ai](https://openrouter.ai/) |
-| `DEEPSEEK_API_KEY` | Optional | Paid last-resort fallback — [deepseek.com](https://deepseek.com/) |
+| `DEEPSEEK_API_KEY` | Yes | The LLM for every digest — [platform.deepseek.com](https://platform.deepseek.com/) (paid, a few cents per run) |
 | `DC_TELEGRAM_BOT_TOKEN` | Yes (DC) | Create via [@BotFather](https://t.me/BotFather) |
 | `DC_TELEGRAM_CHAT_ID` | Yes (DC) | Get via [@userinfobot](https://t.me/userinfobot) |
 | `GEOPO_TELEGRAM_BOT_TOKEN` | Yes (Geopolitics) | Can reuse the same bot, or create a separate one |
@@ -104,13 +102,14 @@ Geopolitical Briefing:
 AI Builders Digest:
   Central feed (zarazhangrui/follow-builders)
     → prepare-digest.js (fetch + filter 24h)
-    → generate-digest.mjs (OpenRouter LLM → markdown)
+    → generate-digest.mjs (DeepSeek → markdown)
     → deliver-telegram.js + deliver-email.js
 ```
 
-All workflows use OpenRouter's free-tier models with streaming + idle detection:
-if a model is actively generating, it gets up to 3 minutes; if unresponsive for
-30 seconds, it's skipped immediately. No paid API keys required.
+Every digest calls DeepSeek (`scripts/lib/deepseek.mjs`). The first attempt
+runs with thinking mode on and a 32k-token budget; if that answer comes back
+empty, too short, or fails validation, the next attempts turn thinking off so
+the whole budget goes to the answer. All digests use `deepseek-v4-flash`.
 
 ## Customization
 
@@ -226,14 +225,14 @@ Regional: [Euronews](https://www.euronews.com/), [ABC News Australia](https://ww
 ## Requirements
 
 - A GitHub account (for Actions — free tier is sufficient)
-- An OpenRouter account ([openrouter.ai](https://openrouter.ai/) — free, no credit card needed)
+- A DeepSeek API key ([platform.deepseek.com](https://platform.deepseek.com/) — paid, pennies per day)
 - A Telegram bot (for delivery — free via [@BotFather](https://t.me/BotFather))
 
-That's it. No paid APIs. No servers. No maintenance.
+That's it. No servers. No maintenance.
 
 ## Privacy
 
-- OpenRouter free API key is stored as a GitHub Secret — never exposed in logs
+- The DeepSeek API key is stored as a GitHub Secret — never exposed in logs
 - Telegram bot tokens are stored as GitHub Secrets
 - All digests read only public content (public RSS feeds, public posts, public podcasts)
 - No user data is collected or transmitted anywhere

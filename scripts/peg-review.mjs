@@ -314,7 +314,7 @@ async function main() {
   // Prompt picks up the latest framework automatically next monthly run.
   const framework = await readFile(FRAMEWORK_PATH, 'utf-8');
 
-  console.log('Calling LLM for PEG recommendations (Agnes → DeepSeek JSON mode)...');
+  console.log('Calling DeepSeek for PEG recommendations (JSON mode)...');
   const prompt = buildPrompt({
     tickers: stockCfg.tickers,
     newsByTicker,

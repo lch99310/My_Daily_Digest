@@ -7,6 +7,9 @@
 // number, and rewrite 來源 into the article's actual media name plus its link.
 // A card the model made up has no article to point at, so it never ships —
 // and every card that does ship links back to the story it came from.
+//
+// The output is Telegram HTML (send with parse_mode: 'HTML'): the media name in
+// 來源 is the hyperlink, so readers don't wade through 200-char Google News URLs.
 // ============================================================================
 
 const SEPARATOR = '━━━━━━━━━━━━━━━━━━━━';
@@ -46,6 +49,11 @@ const SEP_RE   = /^\s*[━─—\-=_]{3,}\s*$/;
 const REF_RE   = /#\s*(\d{1,3})/g;
 
 const clean = s => s.replace(/\*\*/g, '').trim();
+const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// Feed links arrive still XML-escaped (&amp;); decode before re-escaping.
+const sourceLink = a => a.link
+  ? `<a href="${escapeHtml(a.link.replace(/&amp;/g, '&'))}">${escapeHtml(a.source)}</a>`
+  : escapeHtml(a.source);
 // Article numbers belong in 來源 only; strip any the model left in prose.
 const stripRefs = s => s.replace(/\s*[\[（(]\s*#\s*\d{1,3}(?:\s*[、,，]\s*#\s*\d{1,3})*\s*[\]）)]/g, '').replace(/\s*#\s*\d{1,3}/g, '').trim();
 
@@ -58,7 +66,7 @@ const stripRefs = s => s.replace(/\s*[\[（(]\s*#\s*\d{1,3}(?:\s*[、,，]\s*#\s
  * @param {string[]} opts.cardSections  emoji prefixes of the card sections, in order
  * @param {string}   opts.summarySection emoji prefix of the free-text summary section
  * @param {string[]} opts.fields        card body fields in display order (before 來源)
- * @returns {{ text: string, kept: number, dropped: string[] }}
+ * @returns {{ text: string, kept: number, dropped: string[] }}  text is Telegram HTML
  */
 export function groundBriefing(raw, articles, { cardSections, summarySection, fields }) {
   const lines = raw.replace(/\r/g, '').split('\n');
@@ -127,9 +135,9 @@ export function groundBriefing(raw, articles, { cardSections, summarySection, fi
   let kept = 0;
   for (const s of sections) {
     if (out.length) out.push('');
-    out.push(s.header);
+    out.push(escapeHtml(s.header));
     if (s.prefix === summarySection) {
-      out.push(...s.summary);
+      out.push(...s.summary.map(escapeHtml));
       continue;
     }
     out.push('');
@@ -137,11 +145,10 @@ export function groundBriefing(raw, articles, { cardSections, summarySection, fi
     for (const c of s.cards) {
       kept++;
       out.push(SEPARATOR);
-      out.push(`標題：${c.標題}`);
-      for (const f of fields) if (f !== '標題' && c[f]) out.push(`${f}：${c[f]}`);
+      out.push(`標題：${escapeHtml(c.標題)}`);
+      for (const f of fields) if (f !== '標題' && c[f]) out.push(`${f}：${escapeHtml(c[f])}`);
       const cited = c.refs.slice(0, MAX_LINKS_PER_CARD).map(n => articles[n - 1]);
-      out.push(`來源：${[...new Set(cited.map(a => a.source))].join('、')}`);
-      for (const a of cited) if (a.link) out.push(a.link);
+      out.push(`來源：${cited.map(sourceLink).join('、')}`);
       out.push('');
     }
   }
