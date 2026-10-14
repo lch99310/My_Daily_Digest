@@ -109,8 +109,7 @@ AI Builders Digest:
 Every digest calls DeepSeek (`scripts/lib/deepseek.mjs`). The first attempt
 runs with thinking mode on and a 32k-token budget; if that answer comes back
 empty, too short, or fails validation, the next attempts turn thinking off so
-the whole budget goes to the answer. The DC and geopolitics briefings use
-`deepseek-v4-pro`; the rest use `deepseek-v4-flash`.
+the whole budget goes to the answer. All digests use `deepseek-v4-flash`.
 
 ## Customization
 

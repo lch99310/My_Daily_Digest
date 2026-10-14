@@ -5,29 +5,33 @@
 // pool had shrunk to agentic-only, rate-limited or code models. The DC
 // briefing that invented two ByteDance stories came out of that pool.
 //
-// Thinking mode and the token budget: deepseek-v4-pro / v4-flash reason before
-// answering, and the hidden reasoning counts against max_tokens. With the old
-// 8500 cap that was fatal — 2026-10-14 geopo: v4-pro spent all 8500 tokens
-// reasoning (empty answer, twice). So the first attempt keeps thinking on but
+// Every digest runs on deepseek-v4-flash. v4-pro was tried for DC/geopo, but
+// its failures were the thinking budget below, not model size, and flash costs
+// a fraction as much.
+//
+// Thinking mode and the token budget: v4 models reason before answering, and
+// the hidden reasoning counts against max_tokens. With the old 8500 cap that
+// was fatal — 2026-10-14 geopo spent all 8500 tokens reasoning (empty answer,
+// twice, then 1279 chars). So the first attempt keeps thinking on but
 // with THINKING_MAX_TOKENS of room (~10k reasoning + a 5k answer fits with
 // margin); if that still comes back empty, short or rejected, the next attempts
 // switch thinking off so the whole budget goes to the answer.
 
 const DEEPSEEK_URL        = 'https://api.deepseek.com/chat/completions';
 const THINKING_MAX_TOKENS = 32_000;
-// Long enough for a full 32k-token thinking run (~90 tokens/s on v4-pro), short
-// enough that thinking + two non-thinking retries fit a 15-minute workflow.
+const MODEL               = 'deepseek-v4-flash';
+// Long enough for a full 32k-token thinking run (~90 tokens/s), short enough
+// that thinking + two non-thinking retries fit a 15-minute workflow.
 const THINKING_TIMEOUT    = 7 * 60_000;
 const DIRECT_TIMEOUT      = 3 * 60_000;
-const FALLBACK_MODEL      = 'deepseek-v4-flash';
 const RETRY_DELAY         = 3_000;
 
 /**
  * Generate text with DeepSeek, retrying until `accept` is satisfied.
  *
- * Attempts: ① `model` with thinking on (THINKING_MAX_TOKENS budget)
- *           ② `model` with thinking off (`answerTokens` budget)
- *           ③ deepseek-v4-flash with thinking off
+ * Attempts: ① thinking on (THINKING_MAX_TOKENS budget)
+ *           ② thinking off (`answerTokens` budget)
+ *           ③ thinking off again — covers a transient 5xx/timeout on ②
  *
  * @param {object}   opts
  * @param {number}   opts.answerTokens      output budget when thinking is off
@@ -37,7 +41,6 @@ const RETRY_DELAY         = 3_000;
  */
 export async function generate(prompt, {
   apiKey = process.env.DEEPSEEK_API_KEY,
-  model = 'deepseek-v4-flash',
   answerTokens,
   minContentLength,
   responseFormat = null,
@@ -46,14 +49,14 @@ export async function generate(prompt, {
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not set');
 
   const attempts = [
-    { model,                 thinking: true,  maxTokens: THINKING_MAX_TOKENS, timeoutMs: THINKING_TIMEOUT },
-    { model,                 thinking: false, maxTokens: answerTokens,        timeoutMs: DIRECT_TIMEOUT },
-    { model: FALLBACK_MODEL, thinking: false, maxTokens: answerTokens,        timeoutMs: DIRECT_TIMEOUT },
+    { thinking: true,  maxTokens: THINKING_MAX_TOKENS, timeoutMs: THINKING_TIMEOUT },
+    { thinking: false, maxTokens: answerTokens,        timeoutMs: DIRECT_TIMEOUT },
+    { thinking: false, maxTokens: answerTokens,        timeoutMs: DIRECT_TIMEOUT },
   ];
 
   let lastErr;
   for (const [i, a] of attempts.entries()) {
-    const tag = `DeepSeek ${a.model} thinking=${a.thinking ? 'on' : 'off'} (attempt ${i + 1}/${attempts.length})`;
+    const tag = `DeepSeek ${MODEL} thinking=${a.thinking ? 'on' : 'off'} (attempt ${i + 1}/${attempts.length})`;
     console.log(`Trying ${tag}, max_tokens=${a.maxTokens}...`);
     try {
       const { content, result } = await callOnce(prompt, { apiKey, responseFormat, minContentLength, ...a });
@@ -69,9 +72,9 @@ export async function generate(prompt, {
   throw new Error(`DeepSeek failed after ${attempts.length} attempts — ${lastErr?.message || 'unknown error'}`);
 }
 
-async function callOnce(prompt, { apiKey, model, thinking, maxTokens, timeoutMs, responseFormat, minContentLength }) {
+async function callOnce(prompt, { apiKey, thinking, maxTokens, timeoutMs, responseFormat, minContentLength }) {
   const body = {
-    model,
+    model: MODEL,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
     thinking: { type: thinking ? 'enabled' : 'disabled' },

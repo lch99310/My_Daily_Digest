@@ -312,7 +312,7 @@ async function main() {
   };
 
   const briefing = await generate(prompt, {
-    apiKey: DEEPSEEK_API_KEY, model: 'deepseek-v4-pro',
+    apiKey: DEEPSEEK_API_KEY,
     answerTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, accept,
   });
 
