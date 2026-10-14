@@ -8,7 +8,8 @@
 import { writeFile } from 'fs/promises';
 import { isCapableModel } from './lib/model-filter.mjs';
 import { broadcastTelegram } from './lib/telegram.mjs';
-import { callAgnes, describeCompletion } from './lib/agnes.mjs';
+import { callAgnes } from './lib/agnes.mjs';
+import { callDeepSeek as callDeepSeekShared } from './lib/deepseek.mjs';
 import { selectArticles, formatArticleList, groundBriefing } from './lib/grounding.mjs';
 
 const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
@@ -424,36 +425,16 @@ async function tryModelsSequentially(models, prompt, accept) {
 // successfully. Flash used to truncate here, which is exactly what the larger
 // MAX_TOKENS above addresses; a short answer is rejected either way, so the
 // swap can only add a chance of getting the briefing out.
+// Those empty/short answers were hidden reasoning eating MAX_TOKENS
+// (2026-10-14: 8500 tokens, 0 visible chars); lib/deepseek.mjs now turns
+// thinking off, so the budget goes to the briefing itself.
 const DEEPSEEK_MODELS = ['deepseek-v4-pro', 'deepseek-v4-pro', 'deepseek-v4-flash'];
 const DEEPSEEK_MAX_ATTEMPTS = DEEPSEEK_MODELS.length;
 
-async function callDeepSeekOnce(prompt, model) {
-  const response = await fetch('https://api.deepseek.com/chat/completions', {
-    signal: AbortSignal.timeout(120_000),
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+function callDeepSeekOnce(prompt, model) {
+  return callDeepSeekShared(prompt, {
+    apiKey: DEEPSEEK_API_KEY, model, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH,
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`DeepSeek ${response.status}: ${err}`);
-  }
-
-  const result = await response.json();
-  const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error(`DeepSeek returned empty response (${describeCompletion(result)})`);
-  if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH}; ${describeCompletion(result)})`);
-  }
-  return content;
 }
 
 async function callDeepSeek(prompt) {
@@ -489,9 +470,9 @@ async function sendTelegram(text) {
       { label: 'channel', chatId: CHANNEL_CHAT_ID },
     ],
     text,
-    // Every card now carries its article link; keep Telegram from turning
-    // the first one into a preview card.
-    extra: { disable_web_page_preview: true },
+    // groundBriefing() emits HTML: each 來源 media name is the article link.
+    // Previews off so the first link doesn't become a big card.
+    extra: { parse_mode: 'HTML', disable_web_page_preview: true },
   });
 }
 

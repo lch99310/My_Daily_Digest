@@ -19,9 +19,19 @@
 //   • "Invalid model name" 400s for a name accepted on concurrent requests,
 //     5xx, network blips, and empty/stunted 200s that a fresh call answers
 //     fine — all retried after a short delay.
+//
+//   • The model is gone. Since ~2026-10-12 every call to agnes-2.0-flash gets
+//     503 model_not_found "No available channel", which the retry rule above
+//     treated as transient — three attempts and a 60s wait, every run, before
+//     falling through. Now a model_not_found moves straight to the next name in
+//     AGNES_MODELS; if none exist, the live /v1/models list is logged so the
+//     next fix is a one-line change (or set the AGNES_MODEL env var).
 
 const AGNES_URL           = 'https://apihub.agnes-ai.com/v1/chat/completions';
-const AGNES_MODEL         = 'agnes-2.0-flash';
+const AGNES_MODELS        = (process.env.AGNES_MODEL || 'agnes-2.5-flash,agnes-2.0-flash')
+  .split(',').map(m => m.trim()).filter(Boolean);
+const AGNES_MODELS_URL    = 'https://apihub.agnes-ai.com/v1/models';
+const AGNES_UNAVAILABLE_RE = /model_not_found|No available channel/i;
 const AGNES_MAX_ATTEMPTS  = 3;
 const AGNES_RETRY_DELAY   = 2_000;
 const AGNES_RATE_WAIT_MAX = 60_000;    // longest we'll wait out a 429
@@ -42,6 +52,25 @@ export async function callAgnes(prompt, {
   timeoutMs = 180_000,
 }) {
   const deadline = Date.now() + AGNES_TOTAL_BUDGET;
+  let lastErr;
+  for (const model of AGNES_MODELS) {
+    try {
+      return await callAgnesModel(model, prompt, {
+        apiKey, maxTokens, minContentLength, responseFormat, timeoutMs, deadline,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (!err.modelUnavailable) throw err;
+      console.warn(`✗ Agnes ${model}: not available — ${err.message.slice(0, 160)}`);
+    }
+  }
+  await logAvailableModels(apiKey);
+  throw lastErr;
+}
+
+async function callAgnesModel(model, prompt, {
+  apiKey, maxTokens, minContentLength, responseFormat, timeoutMs, deadline,
+}) {
   let budget     = maxTokens;
   let timeout    = timeoutMs;
   let rateWaited = false;
@@ -54,12 +83,16 @@ export async function callAgnes(prompt, {
       break;
     }
     try {
-      return await callAgnesOnce(prompt, {
+      return await callAgnesOnce(model, prompt, {
         apiKey, maxTokens: budget, minContentLength, responseFormat,
         timeoutMs: Math.min(timeout, remaining),
       });
     } catch (err) {
       lastErr = err;
+      if (AGNES_UNAVAILABLE_RE.test(err.message)) {
+        err.modelUnavailable = true;
+        break;
+      }
       if (attempt === AGNES_MAX_ATTEMPTS) break;
 
       let wait;
@@ -88,10 +121,10 @@ export async function callAgnes(prompt, {
   throw lastErr;
 }
 
-async function callAgnesOnce(prompt, { apiKey, maxTokens, minContentLength, responseFormat, timeoutMs }) {
-  console.log(`Trying Agnes AI (max_tokens=${maxTokens})...`);
+async function callAgnesOnce(model, prompt, { apiKey, maxTokens, minContentLength, responseFormat, timeoutMs }) {
+  console.log(`Trying Agnes AI ${model} (max_tokens=${maxTokens})...`);
   const body = {
-    model: AGNES_MODEL,
+    model,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
   };
@@ -146,6 +179,21 @@ export function describeCompletion(result) {
   if (usage.reasoning_tokens  != null) parts.push(`reasoning_tokens=${usage.reasoning_tokens}`);
   if (reasoning) parts.push(`reasoning_chars=${reasoning.length}`);
   return parts.join(', ');
+}
+
+async function logAvailableModels(apiKey) {
+  try {
+    const res  = await fetch(AGNES_MODELS_URL, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await res.text();
+    let ids;
+    try { ids = (JSON.parse(text).data || []).map(m => m.id).join(', '); } catch { ids = text.slice(0, 500); }
+    console.warn(`Agnes /v1/models (HTTP ${res.status}): ${ids || '(empty)'} — none of [${AGNES_MODELS.join(', ')}] is served`);
+  } catch (err) {
+    console.warn(`Agnes /v1/models lookup failed: ${err.message}`);
+  }
 }
 
 function sleep(ms) {

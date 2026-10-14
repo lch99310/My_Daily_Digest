@@ -25,9 +25,15 @@ export function isTinyModel(id) {
   return largest > 0 && largest <= TINY_PARAM_THRESHOLD_B;
 }
 
-// Only block models known to return empty/broken responses.
-// Do NOT block slow models here — the idle timeout handles those.
-const BLOCKED_MODEL_RE = /^nvidia\/nemotron/;
+// Only block models known to return empty/broken responses or that can't
+// serve this job at all. Do NOT block slow models here — the idle timeout
+// handles those.
+//   • nvidia/nemotron — empty bodies.
+//   • thinkingmachines/inkling* — 403 "only available on agentic harnesses"
+//     on every call (2026-10-13/14).
+//   • code-tuned models (…-code, …coder…) — cohere/north-mini-code returned
+//     329 chars or stalled; they don't write Chinese news briefings.
+const BLOCKED_MODEL_RE = /^nvidia\/nemotron|^thinkingmachines\/inkling|-code(?:[-:]|$)|coder/i;
 
 export function isCapableModel(id) {
   return !isTinyModel(id) && !BLOCKED_MODEL_RE.test(id);

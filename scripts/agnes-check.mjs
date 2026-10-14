@@ -18,6 +18,7 @@ if (!KEY) {
 
 const BASE = 'https://apihub.agnes-ai.com/v1';
 const CANDIDATES = [
+  'agnes-2.5-flash',
   'agnes-2.0-flash',
   'Agnes-2.0-Flash',
   'agnes-2.0-flash-001',

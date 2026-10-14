@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { isCapableModel } from './lib/model-filter.mjs';
 import { callAgnes } from './lib/agnes.mjs';
+import { callDeepSeek as callDeepSeekShared } from './lib/deepseek.mjs';
 
 // -- Config -------------------------------------------------------------------
 
@@ -42,6 +43,13 @@ const MAX_TOKENS = 4096;
 // Minimum response length — a valid digest (3–5 cards) must be at least ~600 chars.
 // Models smaller than ~7B often produce truncated or off-format output; reject them.
 const MIN_CONTENT_LENGTH = 600;
+
+// On a thin day (2026-10-13: one builder, zero podcasts) a correct one-card
+// digest is ~450 chars, and the 600 floor rejected every provider's answer.
+// main() lowers the floor to fit the number of source items.
+const MIN_CHARS_BASE     = 200;   // header + footer
+const MIN_CHARS_PER_ITEM = 150;
+let minContentLength = MIN_CONTENT_LENGTH;
 
 // -- URL helpers -------------------------------------------------------------
 
@@ -195,14 +203,16 @@ Emoji 指引：🎙️ 播客 / 🐦 X/Twitter / 📝 部落格
 // -- Substitute [ID] placeholders with real URLs -----------------------------
 
 /**
- * Replace every `[ID]` token in the generated digest with the canonical URL
- * captured in `urlMap`. Any token that doesn't resolve is stripped and its
+ * Replace every `[ID]` token in the generated digest with a link to the
+ * canonical URL captured in `urlMap`. Any token that doesn't resolve is stripped and its
  * containing line is replaced with a safe fallback so we never ship a raw
  * placeholder to users.
  */
 function substituteUrls(digest, urlMap) {
+  // deliver-telegram.js sends with parse_mode Markdown, so a short [原文](url)
+  // link reads better than a raw 150-char YouTube search URL.
   let output = digest.replace(/\[([A-Z]\d{1,3})\]/g, (match, id) => {
-    return urlMap[id] || match;
+    return urlMap[id] ? `[原文](${urlMap[id]})` : match;
   });
 
   // Some models ignore instructions and write URLs directly. Leave those
@@ -340,8 +350,8 @@ async function callOpenRouter(model, prompt) {
 
   content = content.trim();
   if (!content) throw new Error('Empty response body from model');
-  if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`Response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+  if (content.length < minContentLength) {
+    throw new Error(`Response too short (${content.length} chars, need ≥${minContentLength})`);
   }
   return content;
 }
@@ -366,35 +376,13 @@ async function tryModelsSequentially(models, prompt) {
 }
 
 // -- DeepSeek paid fallback ---------------------------------------------------
-// Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
+// Only called when ALL free OpenRouter models fail. Thinking off: see lib/deepseek.mjs.
 
 async function callDeepSeek(prompt) {
   console.log('Falling back to DeepSeek (paid)...');
-  const response = await fetch('https://api.deepseek.com/chat/completions', {
-    signal: AbortSignal.timeout(120_000),
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-v4-flash',
-      max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+  const content = await callDeepSeekShared(prompt, {
+    apiKey: DEEPSEEK_API_KEY, maxTokens: MAX_TOKENS, minContentLength,
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`DeepSeek ${response.status}: ${err}`);
-  }
-
-  const result = await response.json();
-  const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error('DeepSeek returned empty response');
-  if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
-  }
   console.log('✓ Success: DeepSeek (paid fallback)');
   return content;
 }
@@ -426,13 +414,16 @@ async function main() {
     return;
   }
 
+  const itemCount = Object.keys(urlMap).length;
+  minContentLength = Math.min(MIN_CONTENT_LENGTH, MIN_CHARS_BASE + MIN_CHARS_PER_ITEM * itemCount);
+
   let digest;
 
   // 1) Agnes AI (first priority)
   if (AGNES_AI_API_KEY) {
     try {
       digest = await callAgnes(prompt, {
-        apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, timeoutMs: ABSOLUTE_TIMEOUT,
+        apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength, timeoutMs: ABSOLUTE_TIMEOUT,
       });
       console.log('✓ Success: Agnes AI');
     } catch (err) {

@@ -6,6 +6,7 @@
 // Rationale: finance digests carry money-decision info; reliability beats cost.
 
 import { callAgnes } from './agnes.mjs';
+import { callDeepSeek } from './deepseek.mjs';
 
 const IDLE_TIMEOUT     = 30_000;
 const ABSOLUTE_TIMEOUT = 180_000;
@@ -69,34 +70,9 @@ export async function callLLMReliable(prompt, {
 
 async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
   console.log('Calling DeepSeek (paid)...');
-  const body = {
-    model: 'deepseek-v4-flash',
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  };
-  if (responseFormat === 'json') body.response_format = { type: 'json_object' };
-
-  const response = await fetch('https://api.deepseek.com/chat/completions', {
-    signal: AbortSignal.timeout(ABSOLUTE_TIMEOUT),
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
+  const content = await callDeepSeek(prompt, {
+    apiKey, maxTokens, minContentLength, responseFormat, timeoutMs: ABSOLUTE_TIMEOUT,
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`DeepSeek ${response.status}: ${err.slice(0, 200)}`);
-  }
-
-  const result = await response.json();
-  const content = (result.choices?.[0]?.message?.content || '').trim();
-  if (!content) throw new Error('DeepSeek returned empty response');
-  if (content.length < minContentLength) {
-    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${minContentLength})`);
-  }
   console.log('✓ Success: DeepSeek');
   return content;
 }
