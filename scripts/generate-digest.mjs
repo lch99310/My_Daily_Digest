@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 // ============================================================================
 // AI Builders Digest — Generate Digest
-// Reads prepare-output.json, calls OpenRouter LLM, outputs digest markdown.
+// Reads prepare-output.json, calls DeepSeek, outputs digest markdown.
 // ============================================================================
 
 import { readFile, writeFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { isCapableModel } from './lib/model-filter.mjs';
-import { callAgnes } from './lib/agnes.mjs';
-import { callDeepSeek as callDeepSeekShared } from './lib/deepseek.mjs';
+import { generate } from './lib/deepseek.mjs';
 
 // -- Config -------------------------------------------------------------------
 
@@ -17,39 +15,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = process.env.GITHUB_WORKSPACE || resolve(__dirname, '..');
 const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
-const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
-const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
-const DEEPSEEK_API_KEY       = process.env.DEEPSEEK_API_KEY || '';
-
-// Known-working free models (confirmed via 429 = endpoint exists).
-// Used as fallback if the live model-list API fails.
-// Models that return empty bodies (nvidia nemotron) are excluded.
-const FALLBACK_MODELS = [
-  'minimax/minimax-m2.5:free',
-  'deepseek/deepseek-r1:free',
-  'google/gemma-3-27b-it:free',
-  'microsoft/phi-4:free',
-  'google/gemma-4-26b-a4b-it:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-];
-
-// Models to try first — sorted to the front of the discovered list.
-const PREFERRED_MODELS = [
-  'minimax/minimax-m2.5:free',
-];
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 
 const MAX_TOKENS = 4096;
 
 // Minimum response length — a valid digest (3–5 cards) must be at least ~600 chars.
-// Models smaller than ~7B often produce truncated or off-format output; reject them.
 const MIN_CONTENT_LENGTH = 600;
 
 // On a thin day (2026-10-13: one builder, zero podcasts) a correct one-card
-// digest is ~450 chars, and the 600 floor rejected every provider's answer.
-// main() lowers the floor to fit the number of source items.
+// digest is ~450 chars, and the 600 floor rejected every answer. main()
+// lowers the floor to fit the number of source items.
 const MIN_CHARS_BASE     = 200;   // header + footer
 const MIN_CHARS_PER_ITEM = 150;
-let minContentLength = MIN_CONTENT_LENGTH;
 
 // -- URL helpers -------------------------------------------------------------
 
@@ -224,169 +201,6 @@ function substituteUrls(digest, urlMap) {
   return output;
 }
 
-// -- Fetch current free models from OpenRouter API --------------------------
-
-/**
- * Returns a fresh list of all :free model IDs from OpenRouter.
- * Falls back to FALLBACK_MODELS if the API call fails.
- * Caps at 20 models to avoid firing too many parallel requests.
- */
-async function fetchFreeModels() {
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { 'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) throw new Error(`models API ${res.status}`);
-    const data = await res.json();
-    const free = (data.data || [])
-      .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
-      .map(m => m.id);
-    // Sort preferred models to the front so they get tried first
-    free.sort((a, b) => {
-      const aPref = PREFERRED_MODELS.indexOf(a);
-      const bPref = PREFERRED_MODELS.indexOf(b);
-      if (aPref !== -1 && bPref !== -1) return aPref - bPref;
-      if (aPref !== -1) return -1;
-      if (bPref !== -1) return 1;
-      return 0;
-    });
-    console.log(`Discovered ${free.length} capable free models on OpenRouter`);
-    // Cap at 20. OpenRouter free tier: 50 RPD (no credits).
-    // 2 workflows × 20 = 40 max/day, leaving a 10-request buffer.
-    // On a good day only 1 model attempt fires per workflow (2 total).
-    return free.slice(0, 20);
-  } catch (err) {
-    console.warn(`Could not fetch model list (${err.message}), using fallback list`);
-    return FALLBACK_MODELS;
-  }
-}
-
-// -- Call one model (streaming with idle detection) ---------------------------
-
-// Streaming timeout constants:
-// - IDLE_TIMEOUT: if no SSE data arrives for this long, model is unresponsive → abort fast
-// - ABSOLUTE_TIMEOUT: hard cap on total generation time, even if tokens are still flowing
-const IDLE_TIMEOUT     = 30_000;   // 30s — no data = dead model, move on
-const ABSOLUTE_TIMEOUT = 180_000;  // 3min — hard cap even for active models
-
-async function callOpenRouter(model, prompt) {
-  const controller = new AbortController();
-  const absoluteTimer = setTimeout(() => controller.abort(), ABSOLUTE_TIMEOUT);
-
-  let response;
-  try {
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}`,
-        'HTTP-Referer': 'https://github.com/lch99310/ai-daily-digest-from-twitter-x',
-        'X-Title': 'AI Builders Digest',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        messages: [{ role: 'user', content: prompt }],
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(absoluteTimer);
-    if (err.name === 'AbortError') throw new Error('Connection timed out (180s)');
-    throw err;
-  }
-
-  if (!response.ok) {
-    clearTimeout(absoluteTimer);
-    const err = await response.text();
-    throw new Error(`${response.status}: ${err}`);
-  }
-
-  // Read SSE stream with idle detection.
-  // Every time data arrives we reset the idle timer.
-  // If nothing arrives for IDLE_TIMEOUT → model stalled → abort early.
-  let content = '';
-  let idleTimer;
-  const resetIdle = () => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => controller.abort(), IDLE_TIMEOUT);
-  };
-  resetIdle(); // start first idle countdown
-
-  try {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      resetIdle(); // data arrived — reset idle timer
-      const text = decoder.decode(value, { stream: true });
-      for (const line of text.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content || '';
-          content += delta;
-        } catch { /* skip malformed SSE lines */ }
-      }
-    }
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      if (content.length > 0) {
-        throw new Error(`Stalled after ${content.length} chars (idle >${IDLE_TIMEOUT / 1000}s)`);
-      }
-      throw new Error(`No tokens received within ${IDLE_TIMEOUT / 1000}s — model unresponsive`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(idleTimer);
-    clearTimeout(absoluteTimer);
-  }
-
-  content = content.trim();
-  if (!content) throw new Error('Empty response body from model');
-  if (content.length < minContentLength) {
-    throw new Error(`Response too short (${content.length} chars, need ≥${minContentLength})`);
-  }
-  return content;
-}
-
-// -- Try models sequentially -------------------------------------------------
-
-// Try each model one at a time — stop at the first success.
-// This costs only 1 API request on a good day, vs N for parallel racing,
-// which is critical for staying within the 50 req/day free-tier budget.
-async function tryModelsSequentially(models, prompt) {
-  for (const model of models) {
-    try {
-      console.log(`Trying ${model}...`);
-      const result = await callOpenRouter(model, prompt);
-      console.log(`✓ Success: ${model}`);
-      return result;
-    } catch (err) {
-      console.warn(`✗ ${model}: ${err.message.slice(0, 120)}`);
-    }
-  }
-  throw new Error('All OpenRouter models failed');
-}
-
-// -- DeepSeek paid fallback ---------------------------------------------------
-// Only called when ALL free OpenRouter models fail. Thinking off: see lib/deepseek.mjs.
-
-async function callDeepSeek(prompt) {
-  console.log('Falling back to DeepSeek (paid)...');
-  const content = await callDeepSeekShared(prompt, {
-    apiKey: DEEPSEEK_API_KEY, maxTokens: MAX_TOKENS, minContentLength,
-  });
-  console.log('✓ Success: DeepSeek (paid fallback)');
-  return content;
-}
-
 // -- Main --------------------------------------------------------------------
 
 async function main() {
@@ -415,38 +229,11 @@ async function main() {
   }
 
   const itemCount = Object.keys(urlMap).length;
-  minContentLength = Math.min(MIN_CONTENT_LENGTH, MIN_CHARS_BASE + MIN_CHARS_PER_ITEM * itemCount);
+  const minContentLength = Math.min(MIN_CONTENT_LENGTH, MIN_CHARS_BASE + MIN_CHARS_PER_ITEM * itemCount);
 
-  let digest;
-
-  // 1) Agnes AI (first priority)
-  if (AGNES_AI_API_KEY) {
-    try {
-      digest = await callAgnes(prompt, {
-        apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength, timeoutMs: ABSOLUTE_TIMEOUT,
-      });
-      console.log('✓ Success: Agnes AI');
-    } catch (err) {
-      console.warn(`✗ Agnes AI: ${err.message}`);
-    }
-  }
-
-  // 2) OpenRouter free models (existing order preserved)
-  if (!digest && OPENROUTER_FREE_API_KEY) {
-    const models = await fetchFreeModels();
-    console.log(`Trying up to ${models.length} models sequentially…`);
-    try {
-      digest = await tryModelsSequentially(models, prompt);
-    } catch (err) {
-      console.warn(`✗ OpenRouter free models: ${err.message.slice(0, 120)}`);
-    }
-  }
-
-  // 3) DeepSeek paid fallback (last resort)
-  if (!digest) {
-    if (!DEEPSEEK_API_KEY) throw new Error('All upstream LLM providers failed and DEEPSEEK_API_KEY not configured');
-    digest = await callDeepSeek(prompt);
-  }
+  let digest = await generate(prompt, {
+    apiKey: DEEPSEEK_API_KEY, answerTokens: MAX_TOKENS, minContentLength,
+  });
 
   // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();

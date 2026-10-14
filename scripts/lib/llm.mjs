@@ -1,159 +1,25 @@
-// LLM call helper for new digests (stock, macro).
-// Order: Agnes AI → DeepSeek (paid, reliable) → OpenRouter free models fallback.
-// The Agnes call itself (retries, rate limits, budget escalation) is shared
-// with the inline digests via lib/agnes.mjs.
-//
-// Rationale: finance digests carry money-decision info; reliability beats cost.
+// LLM call helper for the finance digests (stock news summary, PEG review).
+// DeepSeek only — see lib/deepseek.mjs for the attempt order and why Agnes and
+// the OpenRouter free models were dropped.
 
-import { callAgnes } from './agnes.mjs';
-import { callDeepSeek } from './deepseek.mjs';
-
-const IDLE_TIMEOUT     = 30_000;
-const ABSOLUTE_TIMEOUT = 180_000;
-
-// Free models tried after DeepSeek fails. Same list/quality bar as dc-digest.
-const FREE_FALLBACK_MODELS = [
-  'minimax/minimax-m2.5:free',
-  'deepseek/deepseek-r1:free',
-  'google/gemma-3-27b-it:free',
-  'microsoft/phi-4:free',
-];
+import { generate } from './deepseek.mjs';
 
 export async function callLLMReliable(prompt, {
   maxTokens = 4000,
   minContentLength = 100,
-  agnesKey = process.env.AGNES_AI_API_KEY,
-  deepseekKey = process.env.DEEPSEEK_API_KEY,
-  openrouterKey = process.env.OPENROUTER_FREE_API_KEY,
-  appTitle = 'Finance Digest',
-  responseFormat = null,  // 'json' to request strict JSON mode (Agnes / DeepSeek)
+  responseFormat = null,  // 'json' to request strict JSON mode
 } = {}) {
-  if (agnesKey) {
-    try {
-      const content = await callAgnes(prompt, {
-        apiKey: agnesKey, maxTokens, minContentLength, responseFormat, timeoutMs: ABSOLUTE_TIMEOUT,
-      });
-      console.log('✓ Success: Agnes');
-      return content;
-    } catch (err) {
-      // Print full Agnes error — server includes the list of available models
-      // when it rejects a model name, and we want that visible in logs.
-      console.warn(`✗ Agnes: ${err.message}`);
-    }
-  }
-
-  if (deepseekKey) {
-    try {
-      return await _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey: deepseekKey, responseFormat });
-    } catch (err) {
-      console.warn(`✗ DeepSeek: ${err.message.slice(0, 120)}`);
-    }
-  }
-
-  if (openrouterKey) {
-    for (const model of FREE_FALLBACK_MODELS) {
-      try {
-        console.log(`Trying ${model}...`);
-        const result = await _callOpenRouter(model, prompt, {
-          maxTokens, minContentLength, apiKey: openrouterKey, appTitle,
-        });
-        console.log(`✓ Success: ${model}`);
-        return result;
-      } catch (err) {
-        console.warn(`✗ ${model}: ${err.message.slice(0, 120)}`);
-      }
-    }
-  }
-
-  throw new Error('All LLM providers failed (Agnes + DeepSeek + OpenRouter free)');
-}
-
-async function _callDeepSeek(prompt, { maxTokens, minContentLength, apiKey, responseFormat }) {
-  console.log('Calling DeepSeek (paid)...');
-  const content = await callDeepSeek(prompt, {
-    apiKey, maxTokens, minContentLength, responseFormat, timeoutMs: ABSOLUTE_TIMEOUT,
+  return generate(prompt, {
+    answerTokens: maxTokens,
+    minContentLength,
+    responseFormat,
+    // A JSON answer cut off mid-string is as useless as an empty one; check it
+    // parses so the next attempt gets a chance instead of the caller failing.
+    accept: responseFormat === 'json' ? assertJson : undefined,
   });
-  console.log('✓ Success: DeepSeek');
-  return content;
 }
 
-async function _callOpenRouter(model, prompt, { maxTokens, minContentLength, apiKey, appTitle }) {
-  const controller = new AbortController();
-  const absoluteTimer = setTimeout(() => controller.abort(), ABSOLUTE_TIMEOUT);
-
-  let response;
-  try {
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://github.com/lch99310/My_Daily_Digest',
-        'X-Title': appTitle,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }],
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(absoluteTimer);
-    if (err.name === 'AbortError') throw new Error('Connection timed out');
-    throw err;
-  }
-
-  if (!response.ok) {
-    clearTimeout(absoluteTimer);
-    const err = await response.text();
-    throw new Error(`${response.status}: ${err.slice(0, 200)}`);
-  }
-
-  let content = '';
-  let idleTimer;
-  const resetIdle = () => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => controller.abort(), IDLE_TIMEOUT);
-  };
-  resetIdle();
-
-  try {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      resetIdle();
-      const text = decoder.decode(value, { stream: true });
-      for (const line of text.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content || '';
-          content += delta;
-        } catch { /* skip malformed SSE lines */ }
-      }
-    }
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      if (content.length > 0) throw new Error(`Stalled after ${content.length} chars`);
-      throw new Error('No tokens received — model unresponsive');
-    }
-    throw err;
-  } finally {
-    clearTimeout(idleTimer);
-    clearTimeout(absoluteTimer);
-  }
-
-  content = content.trim();
-  if (!content) throw new Error('Empty response');
-  if (content.length < minContentLength) {
-    throw new Error(`Response too short (${content.length} chars, need ≥${minContentLength})`);
-  }
-  return content;
+function assertJson(raw) {
+  JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim());
+  return raw;
 }

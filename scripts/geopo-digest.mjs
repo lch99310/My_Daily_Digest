@@ -1,50 +1,42 @@
 #!/usr/bin/env node
 // ============================================================================
 // Daily Geopolitical Briefing — geopo-digest.mjs
-// Fetches global news RSS feeds, uses OpenRouter LLM to generate a
+// Fetches global news RSS feeds, uses DeepSeek to generate a
 // geopolitical risk briefing in Traditional Chinese, delivers via Telegram.
 // ============================================================================
 
 import { writeFile } from 'fs/promises';
-import { isCapableModel } from './lib/model-filter.mjs';
 import { broadcastTelegram } from './lib/telegram.mjs';
-import { callAgnes } from './lib/agnes.mjs';
-import { callDeepSeek as callDeepSeekShared } from './lib/deepseek.mjs';
+import { generate } from './lib/deepseek.mjs';
 import { selectArticles, formatArticleList, groundBriefing } from './lib/grounding.mjs';
 
-const AGNES_AI_API_KEY        = process.env.AGNES_AI_API_KEY || '';
-const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
-const DEEPSEEK_API_KEY       = process.env.DEEPSEEK_API_KEY || '';
+const DEEPSEEK_API_KEY   = process.env.DEEPSEEK_API_KEY || '';
 const BOT_TOKEN          = process.env.GEOPO_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID            = process.env.GEOPO_TELEGRAM_CHAT_ID || '';
 const CHANNEL_CHAT_ID    = process.env.GEOPO_TELEGRAM_CHANNEL_CHAT_ID || '';
 
-if (!AGNES_AI_API_KEY && !OPENROUTER_FREE_API_KEY) {
-  console.error('ERROR: at least one of AGNES_AI_API_KEY / OPENROUTER_FREE_API_KEY is required');
-  process.exit(1);
-}
+if (!DEEPSEEK_API_KEY)   { console.error('ERROR: DEEPSEEK_API_KEY is required'); process.exit(1); }
 if (!BOT_TOKEN)          { console.error('ERROR: GEOPO_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
 if (!CHAT_ID && !CHANNEL_CHAT_ID) {
   console.error('ERROR: at least one of GEOPO_TELEGRAM_CHAT_ID / GEOPO_TELEGRAM_CHANNEL_CHAT_ID is required');
   process.exit(1);
 }
 
-// Output budget. Generous on purpose: the 8-card briefing runs ~3,000 Chinese
-// characters, and reasoning models (DeepSeek v4-pro) spend part of this budget
-// thinking before they emit a single visible character. Too tight a cap shows
-// up as an empty or truncated response, not as an error.
+// Answer budget for the non-thinking DeepSeek attempts; the thinking attempt
+// gets lib/deepseek.mjs's larger THINKING_MAX_TOKENS. The 8-card briefing runs
+// ~3,000 Chinese characters, well inside this.
 const MAX_TOKENS  = 8500;
 const OUTPUT_FILE = '/tmp/geopo-briefing.md';
 
 // Minimum acceptable response length. A full briefing (8 cards: 5 China-adjacent
 // + 3 global, plus gold summary) must be at least ~2000 chars; anything shorter
 // means the model truncated or couldn't follow the format, so we reject it and
-// let the race continue to a larger model.
+// move to the next DeepSeek attempt.
 const MIN_CONTENT_LENGTH = 2000;
 
 // A response must keep at least this many cards after grounding (cards that
 // cite no real article are dropped). Fewer means the model ignored the
-// article-number format or invented its cards — try the next model.
+// article-number format or invented its cards — try the next DeepSeek attempt.
 const MIN_GROUNDED_CARDS = 5;
 
 // Prompt budget: newest first, at most PER_SOURCE items per feed.
@@ -253,211 +245,6 @@ ${articleList}
 `;
 }
 
-// -- OpenRouter (parallel race — same pattern as generate-digest.mjs) --------
-
-const FALLBACK_MODELS = [
-  'minimax/minimax-m2.5:free',
-  'deepseek/deepseek-r1:free',
-  'google/gemma-3-27b-it:free',
-  'microsoft/phi-4:free',
-  'google/gemma-4-26b-a4b-it:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-];
-
-// Models to try first — sorted to the front of the discovered list.
-const PREFERRED_MODELS = [
-  'minimax/minimax-m2.5:free',
-];
-
-async function fetchFreeModels() {
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { 'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) throw new Error(`${res.status}`);
-    const data = await res.json();
-    const free = (data.data || [])
-      .filter(m => m.id.endsWith(':free') && isCapableModel(m.id))
-      .map(m => m.id);
-    // Sort preferred models to the front so they get tried first
-    free.sort((a, b) => {
-      const aPref = PREFERRED_MODELS.indexOf(a);
-      const bPref = PREFERRED_MODELS.indexOf(b);
-      if (aPref !== -1 && bPref !== -1) return aPref - bPref;
-      if (aPref !== -1) return -1;
-      if (bPref !== -1) return 1;
-      return 0;
-    });
-    console.log(`Discovered ${free.length} capable free models`);
-    // Cap at 20. OpenRouter free tier: 50 RPD (no credits).
-    // 2 workflows × 20 = 40 max/day, leaving a 10-request buffer.
-    // On a good day only 1 model attempt fires per workflow (2 total).
-    return free.slice(0, 20);
-  } catch (err) {
-    console.warn(`Model list failed (${err.message}), using fallback`);
-    return FALLBACK_MODELS;
-  }
-}
-
-// Streaming timeout constants:
-// - IDLE_TIMEOUT: if no SSE data arrives for this long, model is unresponsive → abort fast
-// - ABSOLUTE_TIMEOUT: hard cap on total generation time, even if tokens are still flowing
-const IDLE_TIMEOUT     = 30_000;   // 30s — no data = dead model, move on
-const ABSOLUTE_TIMEOUT = 180_000;  // 3min — hard cap even for active models
-
-async function callModel(model, prompt) {
-  const controller = new AbortController();
-  const absoluteTimer = setTimeout(() => controller.abort(), ABSOLUTE_TIMEOUT);
-
-  let response;
-  try {
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_FREE_API_KEY}`,
-        'HTTP-Referer': 'https://github.com/lch99310/ai-daily-digest-from-twitter-x',
-        'X-Title': 'Geopo Digest',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        messages: [{ role: 'user', content: prompt }],
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(absoluteTimer);
-    if (err.name === 'AbortError') throw new Error('Connection timed out (180s)');
-    throw err;
-  }
-
-  if (!response.ok) {
-    clearTimeout(absoluteTimer);
-    const err = await response.text();
-    throw new Error(`${response.status}: ${err}`);
-  }
-
-  // Read SSE stream with idle detection.
-  // Every time data arrives we reset the idle timer.
-  // If nothing arrives for IDLE_TIMEOUT → model stalled → abort early.
-  let content = '';
-  let idleTimer;
-  const resetIdle = () => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => controller.abort(), IDLE_TIMEOUT);
-  };
-  resetIdle(); // start first idle countdown
-
-  try {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      resetIdle(); // data arrived — reset idle timer
-      const text = decoder.decode(value, { stream: true });
-      for (const line of text.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content || '';
-          content += delta;
-        } catch { /* skip malformed SSE lines */ }
-      }
-    }
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      if (content.length > 0) {
-        throw new Error(`Stalled after ${content.length} chars (idle >${IDLE_TIMEOUT / 1000}s)`);
-      }
-      throw new Error(`No tokens received within ${IDLE_TIMEOUT / 1000}s — model unresponsive`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(idleTimer);
-    clearTimeout(absoluteTimer);
-  }
-
-  content = content.trim();
-  if (!content) throw new Error('Empty response');
-  if (content.length < MIN_CONTENT_LENGTH) {
-    throw new Error(`Response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
-  }
-  return content;
-}
-
-// Try models one at a time — stop at the first success.
-// Sequential fallback costs only 1 request on a good day, vs N for parallel racing.
-// Dead models are detected quickly via idle timeout (30s), while active models
-// get up to 180s to finish generating.
-async function tryModelsSequentially(models, prompt, accept) {
-  for (const model of models) {
-    try {
-      console.log(`Trying ${model}...`);
-      const result = accept(await callModel(model, prompt));
-      console.log(`✓ Success: ${model}`);
-      return result;
-    } catch (err) {
-      console.warn(`✗ ${model}: ${err.message.slice(0, 120)}`);
-    }
-  }
-  throw new Error('All OpenRouter models failed');
-}
-
-// -- DeepSeek paid fallback ---------------------------------------------------
-// Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
-
-// DeepSeek is the last line of defence: when every free model is exhausted, this
-// is the only thing standing between us and a missed briefing. We use v4-pro
-// (49B active / 1.6T total) rather than v4-flash (13B active) because the 8-card
-// structured briefing is too complex for Flash — it consistently truncates under
-// the 2000-char threshold, even on retries. Pro reliably produces the full
-// output. Cost is a few cents per run; reliability is worth it.
-// Retrying v4-pro three times is not a fallback — on 2026-09-26 it returned
-// empty, 189 chars, empty, and the briefing was lost. So the last attempt
-// switches to v4-flash, the model every other digest in this repo runs on
-// successfully. Flash used to truncate here, which is exactly what the larger
-// MAX_TOKENS above addresses; a short answer is rejected either way, so the
-// swap can only add a chance of getting the briefing out.
-// Those empty/short answers were hidden reasoning eating MAX_TOKENS
-// (2026-10-14: 8500 tokens, 0 visible chars); lib/deepseek.mjs now turns
-// thinking off, so the budget goes to the briefing itself.
-const DEEPSEEK_MODELS = ['deepseek-v4-pro', 'deepseek-v4-pro', 'deepseek-v4-flash'];
-const DEEPSEEK_MAX_ATTEMPTS = DEEPSEEK_MODELS.length;
-
-function callDeepSeekOnce(prompt, model) {
-  return callDeepSeekShared(prompt, {
-    apiKey: DEEPSEEK_API_KEY, model, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH,
-  });
-}
-
-async function callDeepSeek(prompt) {
-  console.log('Falling back to DeepSeek (paid)...');
-  let lastErr;
-  for (let attempt = 1; attempt <= DEEPSEEK_MAX_ATTEMPTS; attempt++) {
-    const model = DEEPSEEK_MODELS[attempt - 1];
-    try {
-      const content = await callDeepSeekOnce(prompt, model);
-      console.log(`✓ Success: DeepSeek ${model} (paid fallback, attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS})`);
-      return content;
-    } catch (err) {
-      lastErr = err;
-      console.warn(`✗ DeepSeek ${model} attempt ${attempt}/${DEEPSEEK_MAX_ATTEMPTS}: ${err.message.slice(0, 200)}`);
-      // Brief backoff between attempts (skip after the final one).
-      if (attempt < DEEPSEEK_MAX_ATTEMPTS) {
-        await new Promise(r => setTimeout(r, attempt * 2000));
-      }
-    }
-  }
-  throw new Error(`DeepSeek failed after ${DEEPSEEK_MAX_ATTEMPTS} attempts — ${lastErr?.message || 'unknown error'}`);
-}
-
 // -- Telegram delivery -------------------------------------------------------
 // Chunking, retries and chat+channel fan-out live in lib/telegram.mjs, shared
 // with the other digests.
@@ -517,10 +304,9 @@ async function main() {
   const articles = selectArticles(fresh, { perSource: PROMPT_PER_SOURCE, max: PROMPT_MAX_ITEMS });
   console.log(`Prompt articles: ${articles.length} (≤${PROMPT_PER_SOURCE} per source)`);
 
-  const prompt   = buildPrompt(articles);
-  let   briefing;
+  const prompt = buildPrompt(articles);
 
-  // Every provider's output goes through grounding: cards that cite no real
+  // Every answer goes through grounding: cards that cite no real
   // article number are dropped, 來源 becomes media name + original link.
   const accept = raw => {
     const unfenced = raw.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
@@ -533,34 +319,10 @@ async function main() {
     return text;
   };
 
-  // 1) Agnes AI (first priority)
-  if (AGNES_AI_API_KEY) {
-    try {
-      briefing = accept(await callAgnes(prompt, {
-        apiKey: AGNES_AI_API_KEY, maxTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, timeoutMs: ABSOLUTE_TIMEOUT,
-      }));
-      console.log('✓ Success: Agnes AI');
-    } catch (err) {
-      console.warn(`✗ Agnes AI: ${err.message}`);
-    }
-  }
-
-  // 2) OpenRouter free models (existing order preserved)
-  if (!briefing && OPENROUTER_FREE_API_KEY) {
-    const models = await fetchFreeModels();
-    console.log(`Trying up to ${models.length} models sequentially...`);
-    try {
-      briefing = await tryModelsSequentially(models, prompt, accept);
-    } catch (err) {
-      console.warn(`✗ OpenRouter free models: ${err.message.slice(0, 120)}`);
-    }
-  }
-
-  // 3) DeepSeek paid fallback (last resort)
-  if (!briefing) {
-    if (!DEEPSEEK_API_KEY) throw new Error('All upstream LLM providers failed and DEEPSEEK_API_KEY not configured');
-    briefing = accept(await callDeepSeek(prompt));
-  }
+  const briefing = await generate(prompt, {
+    apiKey: DEEPSEEK_API_KEY, model: 'deepseek-v4-pro',
+    answerTokens: MAX_TOKENS, minContentLength: MIN_CONTENT_LENGTH, accept,
+  });
 
   await writeFile(OUTPUT_FILE, briefing, 'utf-8');
   console.log(`Briefing written to ${OUTPUT_FILE} (${briefing.length} chars)`);

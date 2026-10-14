@@ -308,7 +308,7 @@ async function main() {
   const totalFresh = Object.values(newsBySymbol).reduce((s, a) => s + a.length, 0);
   console.log(`Total fresh news items across all tickers: ${totalFresh}`);
 
-  console.log('Summarizing news via LLM (DeepSeek → OpenRouter fallback)...');
+  console.log('Summarizing news via DeepSeek...');
   const newsSummaries = await summarizeNewsBatch(tickers, newsBySymbol);
 
   // -- Compose briefing -----------------------------------------------------
