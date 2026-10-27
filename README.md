@@ -111,6 +111,23 @@ runs with thinking mode on and a 32k-token budget; if that answer comes back
 empty, too short, or fails validation, the next attempts turn thinking off so
 the whole budget goes to the answer. All digests use `deepseek-v4-flash`.
 
+## Card Archive
+
+Every run also appends its shipped cards to `archive/<stream>/YYYY-MM.jsonl`
+(`dc`, `geopo`, `ai`) and commits the file back to the repo, so the news stays
+queryable after the 7-day artifact expires. One JSON object per line:
+
+```json
+{"id":"41e9594f07f9","date":"2026-10-28","stream":"geopo","section":"中國周邊高風險地緣政治事件","title":"…","summary":"…","source":"Nikkei Asia","url":"https://…"}
+```
+
+- `date` is the Sydney date the briefing is read; `id` hashes stream + link,
+  so re-running a workflow on the same day adds no duplicates.
+- Only the news is kept: the model's 風險/影響/總結 commentary is not archived.
+- Cards are archived before Telegram delivery, so a delivery failure loses nothing.
+- To test without sending, run the DC or Geopolitical workflow manually with
+  **deliver** unticked (AI digest: `delivery_override: stdout`).
+
 ## Customization
 
 ### Change the Schedule

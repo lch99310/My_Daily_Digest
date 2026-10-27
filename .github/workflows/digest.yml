@@ -17,6 +17,10 @@ on:
           - telegram
           - stdout
 
+# Commit the day's cards back to archive/
+permissions:
+  contents: write
+
 # Only one digest run at a time
 concurrency:
   group: digest-${{ github.ref }}
@@ -62,6 +66,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           node scripts/generate-digest.mjs
+
+      # ------------------------------------------------------------------
+      # 5. Commit the day's cards to archive/ai/YYYY-MM.jsonl
+      # ------------------------------------------------------------------
+      - name: Commit archive
+        if: always()
+        run: scripts/commit-archive.sh ai
 
       # ------------------------------------------------------------------
       # 6. Check which delivery secrets are configured

@@ -9,11 +9,14 @@ import { writeFile } from 'fs/promises';
 import { broadcastTelegram } from './lib/telegram.mjs';
 import { generate } from './lib/deepseek.mjs';
 import { selectArticles, formatArticleList, groundBriefing } from './lib/grounding.mjs';
+import { archiveCards } from './lib/archive.mjs';
 
 const DEEPSEEK_API_KEY   = process.env.DEEPSEEK_API_KEY || '';
 const BOT_TOKEN          = process.env.GEOPO_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID            = process.env.GEOPO_TELEGRAM_CHAT_ID || '';
 const CHANNEL_CHAT_ID    = process.env.GEOPO_TELEGRAM_CHANNEL_CHAT_ID || '';
+// DELIVER=false generates and archives without sending (manual test runs).
+const DELIVER            = process.env.DELIVER !== 'false';
 
 if (!DEEPSEEK_API_KEY)   { console.error('ERROR: DEEPSEEK_API_KEY is required'); process.exit(1); }
 if (!BOT_TOKEN)          { console.error('ERROR: GEOPO_TELEGRAM_BOT_TOKEN is required'); process.exit(1); }
@@ -308,14 +311,17 @@ async function main() {
 
   // Every answer goes through grounding: cards that cite no real
   // article number are dropped, 來源 becomes media name + original link.
+  let cards = [];
   const accept = raw => {
     const unfenced = raw.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
-    const { text, kept, dropped } = groundBriefing(unfenced, articles, GROUNDING);
+    const grounded = groundBriefing(unfenced, articles, GROUNDING);
+    const { text, kept, dropped } = grounded;
     for (const d of dropped) console.warn(`  dropped card — ${d}`);
     if (kept < MIN_GROUNDED_CARDS) {
       throw new Error(`only ${kept} grounded cards (${dropped.length} dropped), need ≥${MIN_GROUNDED_CARDS}`);
     }
     console.log(`  grounded: kept ${kept} cards, dropped ${dropped.length}`);
+    cards = grounded.cards;
     return text;
   };
 
@@ -327,6 +333,11 @@ async function main() {
   await writeFile(OUTPUT_FILE, briefing, 'utf-8');
   console.log(`Briefing written to ${OUTPUT_FILE} (${briefing.length} chars)`);
 
+  // Archive before delivery so a Telegram failure doesn't lose the cards.
+  const archived = await archiveCards('geopo', cards);
+  console.log(`Archived ${archived.added} cards to ${archived.path} (${archived.skipped} already there)`);
+
+  if (!DELIVER) { console.log('DELIVER=false — skipped Telegram'); return; }
   await sendTelegram(briefing);
   console.log('Delivered to Telegram successfully');
 }

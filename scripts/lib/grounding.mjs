@@ -66,7 +66,9 @@ const stripRefs = s => s.replace(/\s*[\[（(]\s*#\s*\d{1,3}(?:\s*[、,，]\s*#\s
  * @param {string[]} opts.cardSections  emoji prefixes of the card sections, in order
  * @param {string}   opts.summarySection emoji prefix of the free-text summary section
  * @param {string[]} opts.fields        card body fields in display order (before 來源)
- * @returns {{ text: string, kept: number, dropped: string[] }}  text is Telegram HTML
+ * @returns {{ text: string, kept: number, dropped: string[], cards: object[] }}
+ *   text is Telegram HTML; cards are the kept cards as plain data for the
+ *   archive ({ section, title, summary, source, url } — first cited article).
  */
 export function groundBriefing(raw, articles, { cardSections, summarySection, fields }) {
   const lines = raw.replace(/\r/g, '').split('\n');
@@ -132,6 +134,7 @@ export function groundBriefing(raw, articles, { cardSections, summarySection, fi
   closeCard();
 
   const out = [];
+  const cards = [];
   let kept = 0;
   for (const s of sections) {
     if (out.length) out.push('');
@@ -150,9 +153,16 @@ export function groundBriefing(raw, articles, { cardSections, summarySection, fi
       const cited = c.refs.slice(0, MAX_LINKS_PER_CARD).map(n => articles[n - 1]);
       out.push(`來源：${cited.map(sourceLink).join('、')}`);
       out.push('');
+      cards.push({
+        section: s.header,
+        title:   c.標題,
+        summary: c.摘要,
+        source:  cited[0].source || '',
+        url:     (cited[0].link || '').replace(/&amp;/g, '&'),
+      });
     }
   }
 
   const text = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { text, kept, dropped };
+  return { text, kept, dropped, cards };
 }

@@ -8,6 +8,15 @@ on:
 
   # Allow manual trigger from Actions tab
   workflow_dispatch:
+    inputs:
+      deliver:
+        description: 'Send to Telegram (off = generate and archive only)'
+        type: boolean
+        default: true
+
+# Commit the day's cards back to archive/
+permissions:
+  contents: write
 
 # Only one briefing run at a time
 concurrency:
@@ -44,10 +53,20 @@ jobs:
           GEOPO_TELEGRAM_BOT_TOKEN:         ${{ secrets.GEOPO_TELEGRAM_BOT_TOKEN }}
           GEOPO_TELEGRAM_CHAT_ID:           ${{ secrets.GEOPO_TELEGRAM_CHAT_ID }}
           GEOPO_TELEGRAM_CHANNEL_CHAT_ID:   ${{ secrets.GEOPO_TELEGRAM_CHANNEL_CHAT_ID }}
+          # Scheduled runs have no inputs and always deliver.
+          DELIVER: ${{ (github.event_name == 'workflow_dispatch' && inputs.deliver == false) && 'false' || 'true' }}
         run: node scripts/geopo-digest.mjs
 
       # ------------------------------------------------------------------
-      # 4. Upload briefing as artifact (for review)
+      # 4. Commit the day's cards to archive/<stream>/YYYY-MM.jsonl
+      # ------------------------------------------------------------------
+      # Runs even when delivery fails: the script archives before sending.
+      - name: Commit archive
+        if: always()
+        run: scripts/commit-archive.sh geopo
+
+      # ------------------------------------------------------------------
+      # 5. Upload briefing as artifact (for review)
       # ------------------------------------------------------------------
       # Runs even when delivery fails so the generated briefing isn't lost.
       - name: Upload briefing artifact
