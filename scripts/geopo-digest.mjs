@@ -111,6 +111,9 @@ function parseRSSItems(xml) {
   const linkRe  = /<link(?:\s[^>]*)?>([^<\s]+)<\/link>|<link[^>]+href="([^"]+)"/;
   // RSS 2.0 uses <pubDate>, Atom uses <published>/<updated>, Dublin Core uses <dc:date>.
   const dateRe  = /<(pubDate|published|updated|dc:date)(?:\s[^>]*)?>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/;
+  // Google News items name the actual publisher in <source>; the feed name is
+  // only our tracker label. Kept for the card archive.
+  const sourceRe = /<source(?:\s[^>]*)?>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/source>/;
 
   let m;
   while ((m = itemRe.exec(xml)) !== null) {
@@ -122,7 +125,8 @@ function parseRSSItems(xml) {
     const link  = (lm?.[1] || lm?.[2] || '').trim();
     const dm    = dateRe.exec(block);
     const pubDate = (dm?.[2] || '').trim();
-    if (title && title.length > 8) items.push({ title, desc, link, pubDate });
+    const publisher = (sourceRe.exec(block)?.[1] || '').replace(/&amp;/g, '&').trim();
+    if (title && title.length > 8) items.push({ title, desc, link, pubDate, publisher });
   }
   return items;
 }

@@ -68,7 +68,8 @@ const stripRefs = s => s.replace(/\s*[\[（(]\s*#\s*\d{1,3}(?:\s*[、,，]\s*#\s
  * @param {string[]} opts.fields        card body fields in display order (before 來源)
  * @returns {{ text: string, kept: number, dropped: string[], cards: object[] }}
  *   text is Telegram HTML; cards are the kept cards as plain data for the
- *   archive ({ section, title, summary, source, url } — first cited article).
+ *   archive ({ section, title, summary, source, feed, url } — first cited
+ *   article; source is the publisher when the feed names one, feed our label).
  */
 export function groundBriefing(raw, articles, { cardSections, summarySection, fields }) {
   const lines = raw.replace(/\r/g, '').split('\n');
@@ -157,7 +158,8 @@ export function groundBriefing(raw, articles, { cardSections, summarySection, fi
         section: s.header,
         title:   c.標題,
         summary: c.摘要,
-        source:  cited[0].source || '',
+        source:  cited[0].publisher || cited[0].source || '',
+        feed:    cited[0].source || '',
         url:     (cited[0].link || '').replace(/&amp;/g, '&'),
       });
     }

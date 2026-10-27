@@ -118,11 +118,13 @@ Every run also appends its shipped cards to `archive/<stream>/YYYY-MM.jsonl`
 queryable after the 7-day artifact expires. One JSON object per line:
 
 ```json
-{"id":"41e9594f07f9","date":"2026-10-28","stream":"geopo","section":"中國周邊高風險地緣政治事件","title":"…","summary":"…","source":"Nikkei Asia","url":"https://…"}
+{"id":"41e9594f07f9","date":"2026-10-28","stream":"geopo","section":"中國周邊高風險地緣政治事件","title":"…","summary":"…","source":"Nikkei Asia","feed":"Nikkei Asia","url":"https://…"}
 ```
 
 - `date` is the Sydney date the briefing is read; `id` hashes stream + link,
   so re-running a workflow on the same day adds no duplicates.
+- `source` is the publisher (Google News feeds name it per item); `feed` is
+  the tracker that picked the story up, e.g. `AWS Infra`.
 - Only the news is kept: the model's 風險/影響/總結 commentary is not archived.
 - Cards are archived before Telegram delivery, so a delivery failure loses nothing.
 - To test without sending, run the DC or Geopolitical workflow manually with

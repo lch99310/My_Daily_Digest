@@ -36,7 +36,7 @@ export function sectionLabel(header) {
  * day adds nothing that is already there.
  *
  * @param {string}   stream  'dc' | 'geopo' | 'ai'
- * @param {object[]} cards   { section, title, summary, source, url }
+ * @param {object[]} cards   { section, title, summary, source, feed, url }
  * @returns {Promise<{ path: string, added: number, skipped: number }>}
  */
 export async function archiveCards(stream, cards, { date = sydneyDate(), root = REPO_ROOT } = {}) {
@@ -63,6 +63,7 @@ export async function archiveCards(stream, cards, { date = sydneyDate(), root = 
       title:   c.title,
       summary: c.summary || '',
       source:  c.source || '',
+      feed:    c.feed || '',
       url:     c.url || '',
     }));
   }
