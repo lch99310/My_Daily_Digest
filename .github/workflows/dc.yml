@@ -8,6 +8,15 @@ on:
 
   # Allow manual trigger from Actions tab
   workflow_dispatch:
+    inputs:
+      deliver:
+        description: 'Send to Telegram (off = generate and archive only)'
+        type: boolean
+        default: true
+
+# Commit the day's cards back to archive/
+permissions:
+  contents: write
 
 # Only one briefing run at a time
 concurrency:
@@ -44,10 +53,20 @@ jobs:
           DC_TELEGRAM_BOT_TOKEN:         ${{ secrets.DC_TELEGRAM_BOT_TOKEN }}
           DC_TELEGRAM_CHAT_ID:           ${{ secrets.DC_TELEGRAM_CHAT_ID }}
           DC_TELEGRAM_CHANNEL_CHAT_ID:   ${{ secrets.DC_TELEGRAM_CHANNEL_CHAT_ID }}
+          # Scheduled runs have no inputs and always deliver.
+          DELIVER: ${{ (github.event_name == 'workflow_dispatch' && inputs.deliver == false) && 'false' || 'true' }}
         run: node scripts/dc-digest.mjs
 
       # ------------------------------------------------------------------
-      # 4. Upload briefing as artifact (for review)
+      # 4. Commit the day's cards to archive/<stream>/YYYY-MM.jsonl
+      # ------------------------------------------------------------------
+      # Runs even when delivery fails: the script archives before sending.
+      - name: Commit archive
+        if: always()
+        run: scripts/commit-archive.sh dc
+
+      # ------------------------------------------------------------------
+      # 5. Upload briefing as artifact (for review)
       # ------------------------------------------------------------------
       - name: Upload briefing artifact
         uses: actions/upload-artifact@v4

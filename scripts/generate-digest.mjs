@@ -8,6 +8,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { generate } from './lib/deepseek.mjs';
+import { archiveCards } from './lib/archive.mjs';
 
 // -- Config -------------------------------------------------------------------
 
@@ -62,7 +63,8 @@ function improvePodcastUrl(url, title) {
  * URLs we captured here. This completely eliminates URL hallucination, which
  * is why previous digests shipped broken X links.
  *
- * @returns {{ prompt: string, urlMap: Record<string, string> }}
+ * @returns {{ prompt: string, urlMap: Record<string, string>, sourceMap: Record<string, string> }}
+ *   sourceMap names who each ID came from (show, @handle, blog) for the archive.
  */
 function buildPrompt(data) {
   const today = new Date().toLocaleDateString('zh-TW', {
@@ -74,6 +76,7 @@ function buildPrompt(data) {
   const blogs = data.blogs || [];
 
   const urlMap = {};
+  const sourceMap = {};
 
   // --- Podcasts ---
   const podcastLines = [];
@@ -84,6 +87,7 @@ function buildPrompt(data) {
     const desc = (p.description || p.transcript || '')
       .replace(/\n/g, ' ').trim().slice(0, 600);
     urlMap[id] = improvePodcastUrl(p.url, p.title || p.name);
+    sourceMap[id] = showName;
     podcastLines.push(
 `[${id}] 節目：${showName}
     集名：${episodeTitle}
@@ -107,6 +111,7 @@ function buildPrompt(data) {
         .trim()
         .slice(0, 500);
       urlMap[id] = tw.url || `https://x.com/${b.handle}`;
+      sourceMap[id] = `@${b.handle}`;
       xLines.push(
 `[${id}] @${b.handle}${b.name ? ` (${b.name})` : ''}
     推文：${text}`
@@ -119,6 +124,7 @@ function buildPrompt(data) {
   blogs.slice(0, 5).forEach((bp, i) => {
     const id = `B${i + 1}`;
     urlMap[id] = bp.url || '';
+    sourceMap[id] = bp.name || bp.author || 'Blog';
     blogLines.push(
 `[${id}] ${bp.title || 'Untitled'}
     摘要：${(bp.summary || '').replace(/\n/g, ' ').trim().slice(0, 400)}`
@@ -174,7 +180,7 @@ _由 AI 自動生成 · AI Builders Digest_
 Emoji 指引：🎙️ 播客 / 🐦 X/Twitter / 📝 部落格
 `;
 
-  return { prompt, urlMap };
+  return { prompt, urlMap, sourceMap };
 }
 
 // -- Substitute [ID] placeholders with real URLs -----------------------------
@@ -201,6 +207,51 @@ function substituteUrls(digest, urlMap) {
   return output;
 }
 
+// -- Cards for the archive ----------------------------------------------------
+
+const SECTION_BY_PREFIX = { P: '播客', X: 'X', B: '部落格' };
+
+/**
+ * Pull { section, title, summary, source, url } out of the model's digest
+ * (before substituteUrls, while 連結 still holds the [X1]-style ID). A card
+ * whose 連結 has no known ID is left out — it has no source to point at.
+ */
+function parseCards(digest, urlMap, sourceMap) {
+  const cards = [];
+  let card = null;
+  let field = null;
+  const close = () => {
+    if (card?.title && card.summary && card.id) {
+      cards.push({
+        section: SECTION_BY_PREFIX[card.id[0]] || '',
+        title:   card.title,
+        summary: card.summary,
+        source:  sourceMap[card.id] || '',
+        url:     urlMap[card.id],
+      });
+    }
+    card = null;
+    field = null;
+  };
+  for (const line of digest.split('\n')) {
+    const clean = line.replace(/\*\*/g, '').trim();
+    let m;
+    if ((m = /標題\s*[:：]\s*(.+)$/.exec(clean))) { close(); card = { title: m[1].trim() }; field = null; continue; }
+    if (!card) continue;
+    if ((m = /摘要\s*[:：]\s*(.*)$/.exec(clean))) { card.summary = m[1].trim(); field = 'summary'; continue; }
+    if ((m = /連結\s*[:：]\s*(.*)$/.exec(clean))) {
+      const id = /\[([A-Z]\d{1,3})\]/.exec(m[1])?.[1];
+      if (id && urlMap[id]) card.id = id;
+      close();
+      continue;
+    }
+    if (/^[━─]{3,}/.test(clean)) { close(); continue; }
+    if (field === 'summary' && clean) card.summary += clean;
+  }
+  close();
+  return cards;
+}
+
 // -- Main --------------------------------------------------------------------
 
 async function main() {
@@ -209,7 +260,7 @@ async function main() {
   const data = JSON.parse(jsonContent);
   console.log(`Feed loaded: ${data.stats?.podcastEpisodes || 0} podcasts, ${data.stats?.xBuilders || 0} builders`);
 
-  const { prompt, urlMap } = buildPrompt(data);
+  const { prompt, urlMap, sourceMap } = buildPrompt(data);
   console.log(`Prompt built: ${Object.keys(urlMap).length} source items with stable URL IDs`);
 
   // If upstream feeds returned 0 items (weekend, holiday, upstream outage,
@@ -237,6 +288,9 @@ async function main() {
 
   // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+
+  const archived = await archiveCards('ai', parseCards(digest, urlMap, sourceMap));
+  console.log(`Archived ${archived.added} cards to ${archived.path} (${archived.skipped} already there)`);
 
   // Substitute [X1] / [P2] / [B1] placeholders with the canonical URLs
   // captured during buildPrompt — this is the single source of truth for
