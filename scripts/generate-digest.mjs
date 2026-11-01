@@ -211,44 +211,54 @@ function substituteUrls(digest, urlMap) {
 
 const SECTION_BY_PREFIX = { P: '播客', X: 'X', B: '部落格' };
 
+const ID_RE = /\[([A-Z]\d{1,3})\]/;
+// A label at the start of a line, after any emoji/bullets: 標題： / 摘要： / 連結：
+const labelRe = name => new RegExp(`^[^\\p{L}\\p{N}]*${name}\\s*[:：]\\s*`, 'u');
+const TITLE_LABEL = labelRe('標題');
+const SUMMARY_LABEL = labelRe('摘要');
+const LINK_LABEL = labelRe('連結');
+// Leading emoji, bullets and markdown markers on a title line.
+const stripDecor = s => s.replace(/\*\*/g, '').replace(/^[^\p{L}\p{N}@]+/u, '').trim();
+
 /**
  * Pull { section, title, summary, source, url } out of the model's digest
- * (before substituteUrls, while 連結 still holds the [X1]-style ID). A card
- * whose 連結 has no known ID is left out — it has no source to point at.
+ * (before substituteUrls, while the link still holds the [X1]-style ID).
+ *
+ * Cards are the blocks between ━━━ separators, and each is anchored on the
+ * first known ID it contains, not on exact labels: on 2026-10-30 and 10-31
+ * the model wrote its cards without the 標題：/摘要：/連結： labels this used
+ * to require, and the archive got 0 cards both days. Labels are still used
+ * when present. A block with no known ID is left out — it has no source.
  */
 function parseCards(digest, urlMap, sourceMap) {
   const cards = [];
-  let card = null;
-  let field = null;
-  const close = () => {
-    if (card?.title && card.summary && card.id) {
-      cards.push({
-        section: SECTION_BY_PREFIX[card.id[0]] || '',
-        title:   card.title,
-        summary: card.summary,
-        source:  sourceMap[card.id] || '',
-        url:     urlMap[card.id],
-      });
-    }
-    card = null;
-    field = null;
-  };
-  for (const line of digest.split('\n')) {
-    const clean = line.replace(/\*\*/g, '').trim();
-    let m;
-    if ((m = /標題\s*[:：]\s*(.+)$/.exec(clean))) { close(); card = { title: m[1].trim() }; field = null; continue; }
-    if (!card) continue;
-    if ((m = /摘要\s*[:：]\s*(.*)$/.exec(clean))) { card.summary = m[1].trim(); field = 'summary'; continue; }
-    if ((m = /連結\s*[:：]\s*(.*)$/.exec(clean))) {
-      const id = /\[([A-Z]\d{1,3})\]/.exec(m[1])?.[1];
-      if (id && urlMap[id]) card.id = id;
-      close();
-      continue;
-    }
-    if (/^[━─]{3,}/.test(clean)) { close(); continue; }
-    if (field === 'summary' && clean) card.summary += clean;
+  for (const block of digest.split(/^\s*[━─]{3,}.*$/m)) {
+    const ids = [...block.matchAll(new RegExp(ID_RE, 'g'))].map(m => m[1]).filter(id => urlMap[id]);
+    if (ids.length === 0) continue;
+    const id = ids[0];
+    const lines = block.split('\n').map(l => l.trim())
+      .filter(l => l && !l.startsWith('_') && !l.startsWith('🔗')
+        && !LINK_LABEL.test(l.replace(/\*\*/g, '')) && !/^[^\p{L}\p{N}]*\[[A-Z]\d{1,3}\]\s*$/u.test(l));
+
+    const titleIdx = Math.max(0, lines.findIndex(l => TITLE_LABEL.test(l.replace(/\*\*/g, ''))));
+    const title = stripDecor(lines[titleIdx]?.replace(/\*\*/g, '').replace(TITLE_LABEL, '') || '');
+    const rest = lines.slice(titleIdx + 1).map(l => l.replace(/\*\*/g, ''));
+    const summaryIdx = rest.findIndex(l => SUMMARY_LABEL.test(l));
+    const summary = (summaryIdx >= 0 ? rest.slice(summaryIdx) : rest)
+      .map((l, i) => (i === 0 && summaryIdx >= 0 ? l.replace(SUMMARY_LABEL, '') : l.replace(/^[^\p{L}\p{N}「『（("“]+/u, '')))
+      .join('')
+      .replace(new RegExp(ID_RE, 'g'), '')
+      .trim();
+
+    if (!title || !summary) continue;
+    cards.push({
+      section: SECTION_BY_PREFIX[id[0]] || '',
+      title,
+      summary,
+      source:  sourceMap[id] || '',
+      url:     urlMap[id],
+    });
   }
-  close();
   return cards;
 }
 
@@ -289,7 +299,12 @@ async function main() {
   // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
 
-  const archived = await archiveCards('ai', parseCards(digest, urlMap, sourceMap));
+  const cards = parseCards(digest, urlMap, sourceMap);
+  if (cards.length === 0 && ID_RE.test(digest)) {
+    // The digest cites sources but no card parsed: log it so the format can be fixed.
+    console.warn(`WARNING: no archive cards parsed from a digest that cites sources:\n${digest.slice(0, 1500)}`);
+  }
+  const archived = await archiveCards('ai', cards);
   console.log(`Archived ${archived.added} cards to ${archived.path} (${archived.skipped} already there)`);
 
   // Substitute [X1] / [P2] / [B1] placeholders with the canonical URLs
