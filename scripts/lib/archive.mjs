@@ -22,6 +22,12 @@ export function sydneyDate(now = new Date()) {
   return now.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
 }
 
+/** '2026-11-05' → '2026-10'; '2027-01-02' → '2026-12'. */
+function previousMonth(date) {
+  const [y, m] = date.slice(0, 7).split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 /** Section header → plain label: drop the leading emoji and the "(Top N)" suffix. */
 export function sectionLabel(header) {
   return header
@@ -33,7 +39,8 @@ export function sectionLabel(header) {
 /**
  * Append cards to archive/<stream>/<YYYY-MM>.jsonl. A card's id is a hash of
  * stream + link (title when there is no link), so a manual re-run on the same
- * day adds nothing that is already there.
+ * day adds nothing that is already there. Ids in the previous month's file
+ * count too: a story archived on 10-29 came back on 11-05 and was stored twice.
  *
  * @param {string}   stream  'dc' | 'geopo' | 'ai'
  * @param {object[]} cards   { section, title, summary, source, feed, url }
@@ -44,12 +51,15 @@ export async function archiveCards(stream, cards, { date = sydneyDate(), root = 
   await mkdir(dirname(path), { recursive: true });
 
   const existing = new Set();
-  try {
-    for (const line of (await readFile(path, 'utf-8')).split('\n')) {
-      if (line.trim()) existing.add(JSON.parse(line).id);
+  for (const month of [previousMonth(date), date.slice(0, 7)]) {
+    try {
+      const text = await readFile(resolve(root, 'archive', stream, `${month}.jsonl`), 'utf-8');
+      for (const line of text.split('\n')) {
+        if (line.trim()) existing.add(JSON.parse(line).id);
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
     }
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
   }
 
   const rows = [];
