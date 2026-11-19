@@ -1,0 +1,76 @@
+name: Weekly Startup Funding Digest
+
+on:
+  # Sunday 6am Sydney (UTC+10) = Saturday 20:00 UTC — before the wiki's
+  # Sunday ingest (04:23 UTC) picks up the week's archive.
+  schedule:
+    - cron: '0 20 * * 6'
+
+  workflow_dispatch:
+    inputs:
+      deliver:
+        description: 'Send to Telegram (off = generate and archive only)'
+        type: boolean
+        default: true
+      vc_portfolio:
+        description: 'Also run the monthly VC portfolio diff now'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: startup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  startup:
+    name: Generate & Deliver Startup Funding Digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY }}
+      # Posts into the AI digest chat; card titles carry the 🚀 / 🏛️ prefix.
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+      DELIVER: ${{ (github.event_name == 'workflow_dispatch' && inputs.deliver == false) && 'false' || 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Funding and grants digest
+        run: node scripts/startup-digest.mjs
+
+      # First Sunday of the month (Sydney date 1–7), or on request.
+      - name: Monthly VC portfolio diff
+        if: always()
+        run: |
+          day=$(TZ=Australia/Sydney date +%-d)
+          if [ "$day" -le 7 ] || [ "${{ inputs.vc_portfolio }}" = "true" ]; then
+            node scripts/vc-portfolio.mjs
+          else
+            echo "Not the first Sunday of the month — skipping VC portfolio diff."
+          fi
+
+      - name: Commit archive
+        if: always()
+        run: scripts/commit-archive.sh startup
+
+      - name: Upload digest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: startup-digest-${{ github.run_number }}
+          path: |
+            /tmp/startup-digest.html
+            /tmp/vc-portfolio.html
+          if-no-files-found: ignore
+          retention-days: 14

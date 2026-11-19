@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   digest:
-    name: Generate & Deliver Digest
+    name: Generate & Archive Digest
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -87,12 +87,14 @@ jobs:
           [[ -n "$TELEGRAM_BOT_TOKEN" ]] && echo "has_telegram=true" >> $GITHUB_OUTPUT || echo "has_telegram=false" >> $GITHUB_OUTPUT
 
       # ------------------------------------------------------------------
-      # 7. Deliver via Telegram
+      # 7. Deliver via Telegram — manual runs only. Since 2026-11 the daily
+      #    run only archives; ai-weekly.yml posts the week's selection on
+      #    Sunday. Pick "telegram" on a manual run to post a single day.
       # ------------------------------------------------------------------
       - name: Deliver via Telegram
         if: |
           steps.check-secrets.outputs.has_telegram == 'true' &&
-          inputs.delivery_override != 'stdout'
+          inputs.delivery_override == 'telegram'
         run: |
           node scripts/deliver-telegram.js /tmp/follow-builders-digest.md
         env:

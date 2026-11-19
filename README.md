@@ -31,7 +31,13 @@ A structured risk assessment with 8 event cards and a market outlook:
 
 Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia, The War Zone, ミリレポ, 鳳凰軍事, 產經新聞, 讀賣新聞, Euronews, ABC News Australia
 
-### 3. AI Builders Digest (9am Sydney / 23:00 UTC)
+### 3. AI Builders Digest (weekly, Sunday 9:30am Sydney)
+
+The daily run still archives its cards to `archive/ai/`; Telegram gets one
+weekly selection (`scripts/ai-weekly.mjs`), every title prefixed `🧠 AI Builders｜`.
+The model only picks card numbers, so the weekly post holds nothing the daily cards did not.
+
+_Original daily format:_
 
 8-10 curated cards summarizing the past 24 hours from top AI builders:
 
@@ -42,6 +48,29 @@ Sources: Reuters, BBC, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei
 
 All digests are written in Traditional Chinese with a cold, factual
 [LatePost](https://www.latepost.com/)-style tone — no hype, no exclamation marks.
+
+### 4. Startup Funding & Grants (weekly, Sunday 6am Sydney)
+
+Australian startup raises and government grants from the past week, posted to
+the AI digest chat with titles prefixed `🚀 新創融資｜` or `🏛️ 政府補助｜`.
+
+- **Sources:** Startup Daily funding feed, SmartCompany startups feed (incl. the
+  weekly "N startups that raised" wrap), Google News AU funding and grant
+  searches. GrantConnect blocks scripted requests, so grants come from news.
+- **Per card:** what the company does (three plain sentences), round, amount,
+  investors, use of funds, and the past year of headlines about the company.
+- **Anti-hallucination** (`scripts/lib/startup-grounding.mjs`): every deal cites
+  numbered articles; a deal whose company is not in the cited text is dropped;
+  an amount, round, city or investor not in the text is cleared to 未載明; the
+  description and use of funds need a verbatim English quote from the article.
+  Dates and links come from the feeds, never the model. The footer reports how
+  many items each source returned and how many deals and fields were removed.
+  Offline checks: `node scripts/test-startup-grounding.mjs`.
+- **Monthly (first Sunday):** `scripts/vc-portfolio.mjs` diffs the portfolio
+  pages of Blackbird, Square Peg, AirTree, Main Sequence, Investible and OIF
+  against last month's snapshot. No model is involved.
+- Archive: `archive/startup/YYYY-MM.jsonl` (standard nine fields plus company,
+  city, kind, round, amount, investors, use_of_funds, timeline, sources).
 
 ## Quick Start
 
