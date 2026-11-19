@@ -165,13 +165,18 @@ async function extractDeals(articles) {
 
 // -- Timeline ----------------------------------------------------------------
 
-async function timelineCandidates(deals, weekLinks) {
+/**
+ * Past-year headlines naming the company, older than this week's window so the
+ * same raise reported by other outlets does not show up as "history".
+ */
+async function timelineCandidates(deals, now = Date.now()) {
+  const cutoff = now - WINDOW_HOURS * 3600_000;
   const out = {};
   for (const d of deals.slice(0, MAX_TIMELINE_COMPANIES)) {
-    const items = await fetchFeed({ name: `GN ${d.company}`, url: gn(`"${d.company}" when:1y`), ua: 'startup-digest/1.0' });
+    const items = await fetchFeed({ name: `Google News ${d.company}`, url: gn(`"${d.company}" when:1y`), ua: 'startup-digest/1.0' });
     out[d.company] = dedupeByTitle(sortByDateDesc(items.map(splitPublisher)))
       .filter(it => it.title.toLowerCase().includes(d.company.toLowerCase()))
-      .filter(it => !weekLinks.has(it.link))
+      .filter(it => new Date(it.pubDate).getTime() < cutoff)
       .slice(0, MAX_TIMELINE_CANDIDATES);
   }
   return out;
@@ -180,7 +185,7 @@ async function timelineCandidates(deals, weekLinks) {
 function timelinePrompt(deals, candidates) {
   const blocks = deals.filter(d => candidates[d.company]?.length).map(d => {
     const list = candidates[d.company]
-      .map((it, i) => `  ${i + 1}. (${it.pubDate.slice(5, 16)}) ${it.title} — ${it.publisher}`).join('\n');
+      .map((it, i) => `  ${i + 1}. (${sydneyDate(new Date(it.pubDate))}) ${it.title} — ${it.publisher}`).join('\n');
     return `### ${d.company}\n這家公司：${d.what !== NOT_STATED ? d.what : d.what_quote || '（無描述）'}\n候選新聞：\n${list}`;
   }).join('\n\n');
 
@@ -191,9 +196,8 @@ ${blocks}
 只輸出 JSON：{"公司名":[{"n":1,"zh":"一句中文"}]}；某家公司沒有符合的就給空陣列。`;
 }
 
-async function buildTimelines(deals, articles) {
-  const weekLinks = new Set(articles.map(a => a.link));
-  const candidates = await timelineCandidates(deals, weekLinks);
+async function buildTimelines(deals) {
+  const candidates = await timelineCandidates(deals);
   if (!Object.values(candidates).some(l => l.length)) return {};
   try {
     const raw = await generate(timelinePrompt(deals, candidates), {
@@ -232,9 +236,9 @@ function renderCard(d, articles, timeline) {
   lines.push(`• 資金用途：${esc(d.use)}`);
   if (timeline?.length) {
     lines.push('• 近一年：');
-    for (const t of timeline) lines.push(`   ${t.pubDate.slice(5, 16)}｜${link(t.link, t.zh || t.title)}（${esc(t.publisher)}）`);
+    for (const t of timeline) lines.push(`   ${sydneyDate(new Date(t.pubDate))}｜${link(t.link, t.zh || t.title)}（${esc(t.publisher || '原文')}）`);
   } else {
-    lines.push('• 近一年：新聞中找不到其他報導');
+    lines.push('• 近一年：本週以前的新聞中找不到這家公司的其他報導');
   }
   lines.push(`• 宣布：${esc(sydneyDate(new Date(cited[0].pubDate)))}`);
   lines.push(`• 來源：${cited.slice(0, 3).map(a => link(a.link, a.publisher || a.source)).join('、')}`);
@@ -310,7 +314,7 @@ async function main() {
   for (const r of grounding.cleared) console.log(`  cleared: ${r}`);
   if (grounding.dc.length) console.log(`  to DC briefing: ${grounding.dc.join(', ')}`);
 
-  const timelines = await buildTimelines(grounding.kept, articles);
+  const timelines = await buildTimelines(grounding.kept);
   const text = renderDigest({ deals: grounding.kept, articles, timelines, stats, grounding, today });
   await writeFile(OUTPUT_FILE, text, 'utf-8');
 
