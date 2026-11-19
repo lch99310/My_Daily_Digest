@@ -36,14 +36,20 @@ export function sectionLabel(header) {
     .trim();
 }
 
+const STANDARD = new Set(['id', 'date', 'stream', 'section', 'title', 'summary', 'source', 'feed', 'url']);
+const withoutStandard = extra =>
+  Object.fromEntries(Object.entries(extra || {}).filter(([k]) => !STANDARD.has(k)));
+
 /**
  * Append cards to archive/<stream>/<YYYY-MM>.jsonl. A card's id is a hash of
  * stream + link (title when there is no link), so a manual re-run on the same
  * day adds nothing that is already there. Ids in the previous month's file
  * count too: a story archived on 10-29 came back on 11-05 and was stored twice.
  *
- * @param {string}   stream  'dc' | 'geopo' | 'ai'
- * @param {object[]} cards   { section, title, summary, source, feed, url }
+ * @param {string}   stream  'dc' | 'geopo' | 'ai' | 'startup'
+ * @param {object[]} cards   { section, title, summary, source, feed, url, extra? }
+ *   `extra` (startup stream) holds structured fields written after the nine
+ *   standard ones; a key that collides with a standard field is ignored.
  * @returns {Promise<{ path: string, added: number, skipped: number }>}
  */
 export async function archiveCards(stream, cards, { date = sydneyDate(), root = REPO_ROOT } = {}) {
@@ -75,6 +81,7 @@ export async function archiveCards(stream, cards, { date = sydneyDate(), root = 
       source:  c.source || '',
       feed:    c.feed || '',
       url:     c.url || '',
+      ...withoutStandard(c.extra),
     }));
   }
   if (rows.length) await appendFile(path, rows.join('\n') + '\n', 'utf-8');

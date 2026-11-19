@@ -1,0 +1,53 @@
+name: Weekly AI Builders Digest
+
+on:
+  # Sunday 9:30am Sydney (UTC+10) = Saturday 23:30 UTC, after the daily AI run
+  # (23:00 UTC) has archived Sunday's cards. Shares its concurrency group, so a
+  # slow daily run finishes first.
+  schedule:
+    - cron: '30 23 * * 6'
+
+  workflow_dispatch:
+    inputs:
+      deliver:
+        description: 'Send to Telegram (off = generate only)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: digest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  weekly:
+    name: Weekly AI Builders selection
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build and deliver weekly digest
+        env:
+          DEEPSEEK_API_KEY:   ${{ secrets.DEEPSEEK_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          DELIVER: ${{ (github.event_name == 'workflow_dispatch' && inputs.deliver == false) && 'false' || 'true' }}
+        run: node scripts/ai-weekly.mjs
+
+      - name: Upload digest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-weekly-${{ github.run_number }}
+          path: /tmp/ai-weekly.html
+          if-no-files-found: ignore
+          retention-days: 14
